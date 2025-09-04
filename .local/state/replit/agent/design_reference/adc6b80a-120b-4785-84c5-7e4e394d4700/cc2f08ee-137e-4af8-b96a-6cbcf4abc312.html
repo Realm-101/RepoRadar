@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RepoAnalyzer - AI-Powered GitHub Repository Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                colors: {
+                    'primary': '#FF6B35',
+                    'secondary': '#FF3333',
+                    'accent': '#FF8C69',
+                    'dark': '#0A0A0A',
+                    'card': '#111111',
+                    'border': '#222222'
+                },
+                fontFamily: {
+                    'sans': ['Inter', 'system-ui', 'sans-serif']
+                },
+                animation: {
+                    'glow': 'glow 2s ease-in-out infinite alternate',
+                    'float': 'float 3s ease-in-out infinite'
+                }
+            }
+        }
+    };
+    </script>
+    <style>
+        @keyframes glow {
+            from { box-shadow: 0 0 20px rgba(255, 107, 53, 0.3); }
+            to { box-shadow: 0 0 30px rgba(255, 107, 53, 0.5); }
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+        .gradient-border {
+            background: linear-gradient(135deg, #FF6B35, #FF3333, #FF8C69);
+            padding: 1px;
+            border-radius: 12px;
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #FF6B35, #FF3333);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .neon-glow {
+            box-shadow: 0 0 20px rgba(255, 107, 53, 0.3), 0 0 40px rgba(255, 51, 51, 0.2);
+        }
+    </style>
+</head>
+<body class="bg-dark text-white font-sans">
+    <!-- @COMPONENT: Header [navigation and user profile] -->
+    <header class="border-b border-border bg-dark/95 backdrop-blur-sm sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-8">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-lg bg-gradient-to-r from-primary to-secondary flex items-center justify-center">
+                            <i class="fas fa-code text-white text-lg"></i>
+                        </div>
+                        <h1 class="text-2xl font-bold gradient-text">RepoAnalyzer</h1>
+                    </div>
+                    <nav class="hidden md:flex items-center space-x-6">
+                        <a href="#" class="text-white hover:text-primary transition-colors">Dashboard</a>
+                        <a href="#" class="text-gray-400 hover:text-primary transition-colors">Search</a>
+                        <a href="#" class="text-gray-400 hover:text-primary transition-colors">Compare</a>
+                        <a href="#" class="text-gray-400 hover:text-primary transition-colors">Saved</a>
+                    </nav>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button class="p-2 text-gray-400 hover:text-white transition-colors">
+                        <i class="fas fa-bell"></i>
+                    </button>
+                    <div class="flex items-center space-x-3">
+                        <!-- Profile image using object-fit: cover for non-square images -->
+                        <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=100&h=100" 
+                             alt="User profile" 
+                             class="w-8 h-8 rounded-full object-cover border-2 border-primary/30" 
+                             data-mock="true" />
+                        <span class="text-sm font-medium" data-bind="user.name">John Doe</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+    <!-- @END_COMPONENT: Header -->
+
+    <!-- @COMPONENT: SearchSection [main search interface] -->
+    <section class="py-12 bg-gradient-to-r from-dark via-card to-dark">
+        <div class="max-w-4xl mx-auto px-6 text-center">
+            <h2 class="text-5xl font-bold mb-6">
+                Discover & Analyze 
+                <span class="gradient-text">GitHub Repositories</span>
+            </h2>
+            <p class="text-xl text-gray-300 mb-10">AI-powered analysis of originality, completeness, marketability, and monetization potential</p>
+            
+            <div class="gradient-border">
+                <div class="bg-card rounded-xl p-6">
+                    <div class="flex items-center space-x-4">
+                        <div class="flex-1">
+                            <input type="text" 
+                                   placeholder="Enter repository URL or search terms..." 
+                                   class="w-full bg-dark border border-border rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-primary transition-colors"
+                                   data-event="input:handleSearch" />
+                        </div>
+                        <button class="bg-gradient-to-r from-primary to-secondary hover:from-secondary hover:to-primary px-8 py-3 rounded-lg font-semibold transition-all duration-300 neon-glow"
+                                data-event="click:handleAnalyze">
+                            Analyze Repository
+                        </button>
+                    </div>
+                    <div class="flex items-center justify-center mt-4 space-x-6 text-sm text-gray-400">
+                        <div class="flex items-center space-x-2">
+                            <i class="fas fa-brain text-primary"></i>
+                            <span>Gemini 2.5 Pro Analysis</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <i class="fas fa-chart-line text-accent"></i>
+                            <span>5-Factor Evaluation</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <i class="fas fa-code-branch text-secondary"></i>
+                            <span>Similar Repos</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- @END_COMPONENT: SearchSection -->
+
+    <!-- @COMPONENT: RecentAnalysis [recent repository cards] -->
+    <section class="py-16 bg-dark">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="flex items-center justify-between mb-12">
+                <h3 class="text-3xl font-bold">Recent Analysis</h3>
+                <button class="text-primary hover:text-secondary transition-colors font-medium">View All</button>
+            </div>
+
+            <!-- @MAP: recentRepos.map(repo => ( -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Repository Card 1 -->
+                <div class="bg-card border border-border rounded-xl p-6 hover:border-primary/30 transition-all duration-300 group">
+                    <div class="flex items-start justify-between mb-4">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
+                                <i class="fab fa-react text-white"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-lg" data-bind="repo.name">awesome-react-app</h4>
+                                <p class="text-sm text-gray-400" data-bind="repo.owner">microsoft/awesome-react-app</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <i class="fas fa-star text-yellow-500"></i>
+                            <span class="text-sm" data-bind="repo.stars">12.4k</span>
+                        </div>
+                    </div>
+                    
+                    <p class="text-gray-300 text-sm mb-6" data-mock="true">A comprehensive React application showcasing modern development practices and advanced component patterns.</p>
+                    
+                    <!-- AI Analysis Scores -->
+                    <div class="space-y-3 mb-6">
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="text-gray-400">Originality</span>
+                            <div class="flex items-center space-x-2">
+                                <div class="w-20 h-2 bg-gray-700 rounded-full overflow-hidden">
+                                    <div class="w-4/5 h-full bg-gradient-to-r from-primary to-secondary"></div>
+                                </div>
+                                <span class="text-primary font-semibold">8.5</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="text-gray-400">Completeness</span>
+                            <div class="flex items-center space-x-2">
+                                <div class="w-20 h-2 bg-gray-700 rounded-full overflow-hidden">
+                                    <div class="w-9/10 h-full bg-gradient-to-r from-green-400 to-blue-500"></div>
+                                </div>
+                                <span class="text-green-400 font-semibold">9.2</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="text-gray-400">Marketability</span>
+                            <div class="flex items-center space-x-2">
+                                <div class="w-20 h-2 bg-gray-700 rounded-full overflow-hidden">
+                                    <div class="w-3/4 h-full bg-gradient-to-r from-accent to-primary"></div>
+                                </div>
+                                <span class="text-accent font-semibold">7.8</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <span class="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded-full">React</span>
+                            <span class="px-2 py-1 bg-yellow-500/20 text-yellow-400 text-xs rounded-full">TypeScript</span>
+                        </div>
+                        <button class="text-primary hover:text-secondary transition-colors text-sm font-medium"
+                                data-event="click:viewDetails">View Details</button>
+                    </div>
+                </div>
+
+                <!-- Repository Card 2 -->
+                <div class="bg-card border border-border rounded-xl p-6 hover:border-primary/30 transition-all duration-300 group">
+                    <div class="flex items-start justify-between mb-4">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-lg bg-gradient-to-r from-green-500 to-teal-600 flex items-center justify-center">
+                                <i class="fab fa-node-js text-white"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-lg" data-bind="repo.name">ai-chatbot-framework</h4>
+                                <p class="text-sm text-gray-400" data-bind="repo.owner">openai/ai-chatbot-framework</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <i class="fas fa-star text-yellow-500"></i>
+                            <span class="text-sm" data-bind="repo.stars">8.7k</span>
+                        </div>
+                    </div>
+                    
+                    <p class="text-gray-300 text-sm mb-6" data-mock="true">Advanced chatbot framework with natural language processing and machine learning capabilities.</p>
+                    
+                    <!-- AI Analysis Scores -->
+                    <div class="space-y-3 mb-6">
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="text-gray-400">Originality</span>
+                            <div class="flex items-center space-x-2">
+                                <div class="w-20 h-2 bg-gray-700 rounded-full overflow-hidden">
+                                    <div class="w-9/10 h-full bg-gradient-to-r from-primary to-secondary"></div>
+                                </div>
+                                <span class="text-primary font-semibold">9.1</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="text-gray-400">Monetization</span>
+                            <div class="flex items-center space-x-2">
+                                <div class="w-20 h-2 bg-gray-700 rounded-full overflow-hidden">
+                                    <div class="w-4/5 h-full bg-gradient-to-r from-purple-400 to-pink-500"></div>
+                                </div>
+                                <span class="text-purple-400 font-semibold">8.3</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="text-gray-400">Usefulness</span>
+                            <div class="flex items-center space-x-2">
+                                <div class="w-20 h-2 bg-gray-700 rounded-full overflow-hidden">
+                                    <div class="w-5/6 h-full bg-gradient-to-r from-accent to-primary"></div>
+                                </div>
+                                <span class="text-accent font-semibold">8.7</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <span class="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded-full">Node.js</span>
+                            <span class="px-2 py-1 bg-purple-500/20 text-purple-400 text-xs rounded-full">AI/ML</span>
+                        </div>
+                        <button class="text-primary hover:text-secondary transition-colors text-sm font-medium"
+                                data-event="click:viewDetails">View Details</button>
+                    </div>
+                </div>
+
+                <!-- Repository Card 3 -->
+                <div class="bg-card border border-border rounded-xl p-6 hover:border-primary/30 transition-all duration-300 group">
+                    <div class="flex items-start justify-between mb-4">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-lg bg-gradient-to-r from-orange-500 to-red-600 flex items-center justify-center">
+                                <i class="fab fa-python text-white"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-lg" data-bind="repo.name">data-visualization-toolkit</h4>
+                                <p class="text-sm text-gray-400" data-bind="repo.owner">plotly/data-viz-toolkit</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <i class="fas fa-star text-yellow-500"></i>
+                            <span class="text-sm" data-bind="repo.stars">15.2k</span>
+                        </div>
+                    </div>
+                    
+                    <p class="text-gray-300 text-sm mb-6" data-mock="true">Comprehensive data visualization toolkit with interactive charts and advanced analytics capabilities.</p>
+                    
+                    <!-- AI Analysis Scores -->
+                    <div class="space-y-3 mb-6">
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="text-gray-400">Completeness</span>
+                            <div class="flex items-center space-x-2">
+                                <div class="w-20 h-2 bg-gray-700 rounded-full overflow-hidden">
+                                    <div class="w-full h-full bg-gradient-to-r from-green-400 to-blue-500"></div>
+                                </div>
+                                <span class="text-green-400 font-semibold">9.5</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="text-gray-400">Marketability</span>
+                            <div class="flex items-center space-x-2">
+                                <div class="w-20 h-2 bg-gray-700 rounded-full overflow-hidden">
+                                    <div class="w-5/6 h-full bg-gradient-to-r from-accent to-primary"></div>
+                                </div>
+                                <span class="text-accent font-semibold">8.9</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="text-gray-400">Usefulness</span>
+                            <div class="flex items-center space-x-2">
+                                <div class="w-20 h-2 bg-gray-700 rounded-full overflow-hidden">
+                                    <div class="w-full h-full bg-gradient-to-r from-accent to-primary"></div>
+                                </div>
+                                <span class="text-accent font-semibold">9.3</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <span class="px-2 py-1 bg-orange-500/20 text-orange-400 text-xs rounded-full">Python</span>
+                            <span class="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded-full">Data Science</span>
+                        </div>
+                        <button class="text-primary hover:text-secondary transition-colors text-sm font-medium"
+                                data-event="click:viewDetails">View Details</button>
+                    </div>
+                </div>
+            </div>
+            <!-- @END_MAP )) -->
+        </div>
+    </section>
+    <!-- @END_COMPONENT: RecentAnalysis -->
+
+    <!-- @COMPONENT: DetailedAnalysis [comprehensive repository analysis view] -->
+    <section class="py-16 bg-gradient-to-b from-dark to-card">
+        <div class="max-w-6xl mx-auto px-6">
+            <div class="bg-card border border-border rounded-2xl p-8">
+                <div class="flex items-start justify-between mb-8">
+                    <div class="flex items-center space-x-4">
+                        <!-- Modern tech interface background image -->
+                        <img src="https://images.unsplash.com/photo-1555949963-aa79dcee981c?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=100&h=100" 
+                             alt="Repository avatar" 
+                             class="w-16 h-16 rounded-xl object-cover border-2 border-primary/30" />
+                        <div>
+                            <h2 class="text-3xl font-bold gradient-text" data-bind="repo.fullName">microsoft/vscode</h2>
+                            <p class="text-gray-400 mt-1" data-bind="repo.description">Visual Studio Code - The world's most popular code editor</p>
+                            <div class="flex items-center space-x-4 mt-2">
+                                <div class="flex items-center space-x-1">
+                                    <i class="fas fa-star text-yellow-500"></i>
+                                    <span data-bind="repo.stars">156.3k</span>
+                                </div>
+                                <div class="flex items-center space-x-1">
+                                    <i class="fas fa-code-branch text-gray-400"></i>
+                                    <span data-bind="repo.forks">26.8k</span>
+                                </div>
+                                <div class="flex items-center space-x-1">
+                                    <i class="fas fa-eye text-gray-400"></i>
+                                    <span data-bind="repo.watchers">3.2k</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <button class="p-3 bg-dark border border-border rounded-lg hover:border-primary transition-colors"
+                                data-event="click:saveRepository">
+                            <i class="fas fa-bookmark text-gray-400"></i>
+                        </button>
+                        <button class="p-3 bg-dark border border-border rounded-lg hover:border-primary transition-colors"
+                                data-event="click:compareRepository">
+                            <i class="fas fa-balance-scale text-gray-400"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- AI Analysis Results -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                    <div class="space-y-6">
+                        <h3 class="text-xl font-semibold mb-4">AI Analysis Results</h3>
+                        
+                        <div class="space-y-4">
+                            <div class="bg-dark rounded-lg p-4">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="font-medium">Originality</span>
+                                    <span class="text-2xl font-bold text-primary">8.7</span>
+                                </div>
+                                <div class="w-full h-3 bg-gray-700 rounded-full overflow-hidden">
+                                    <div class="w-5/6 h-full bg-gradient-to-r from-primary to-secondary rounded-full"></div>
+                                </div>
+                                <p class="text-sm text-gray-400 mt-2">Highly innovative approach to code editing with unique features</p>
+                            </div>
+
+                            <div class="bg-dark rounded-lg p-4">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="font-medium">Completeness</span>
+                                    <span class="text-2xl font-bold text-green-400">9.4</span>
+                                </div>
+                                <div class="w-full h-3 bg-gray-700 rounded-full overflow-hidden">
+                                    <div class="w-full h-full bg-gradient-to-r from-green-400 to-blue-500 rounded-full"></div>
+                                </div>
+                                <p class="text-sm text-gray-400 mt-2">Comprehensive documentation, tests, and feature implementation</p>
+                            </div>
+
+                            <div class="bg-dark rounded-lg p-4">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="font-medium">Marketability</span>
+                                    <span class="text-2xl font-bold text-accent">9.1</span>
+                                </div>
+                                <div class="w-full h-3 bg-gray-700 rounded-full overflow-hidden">
+                                    <div class="w-11/12 h-full bg-gradient-to-r from-accent to-primary rounded-full"></div>
+                                </div>
+                                <p class="text-sm text-gray-400 mt-2">Excellent market positioning and user adoption potential</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-6">
+                        <h3 class="text-xl font-semibold mb-4">Key Metrics</h3>
+                        
+                        <div class="space-y-4">
+                            <div class="bg-dark rounded-lg p-4">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="font-medium">Monetization Potential</span>
+                                    <span class="text-2xl font-bold text-purple-400">8.2</span>
+                                </div>
+                                <div class="w-full h-3 bg-gray-700 rounded-full overflow-hidden">
+                                    <div class="w-4/5 h-full bg-gradient-to-r from-purple-400 to-pink-500 rounded-full"></div>
+                                </div>
+                                <p class="text-sm text-gray-400 mt-2">Strong potential for enterprise licensing and extensions</p>
+                            </div>
+
+                            <div class="bg-dark rounded-lg p-4">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="font-medium">Overall Usefulness</span>
+                                    <span class="text-2xl font-bold text-yellow-400">9.6</span>
+                                </div>
+                                <div class="w-full h-3 bg-gray-700 rounded-full overflow-hidden">
+                                    <div class="w-full h-full bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full"></div>
+                                </div>
+                                <p class="text-sm text-gray-400 mt-2">Exceptional utility for developers and widespread adoption</p>
+                            </div>
+
+                            <div class="bg-dark rounded-lg p-4 border border-primary/20">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="font-medium">Overall Score</span>
+                                    <span class="text-3xl font-bold gradient-text">9.0</span>
+                                </div>
+                                <p class="text-sm text-gray-400">Exceptional repository with high potential across all metrics</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Technology Stack -->
+                <div class="mb-8">
+                    <h3 class="text-xl font-semibold mb-4">Technology Stack</h3>
+                    <div class="flex flex-wrap gap-3">
+                        <span class="px-4 py-2 bg-blue-500/20 text-blue-400 rounded-full border border-blue-500/30">TypeScript (78.2%)</span>
+                        <span class="px-4 py-2 bg-red-500/20 text-red-400 rounded-full border border-red-500/30">CSS (12.1%)</span>
+                        <span class="px-4 py-2 bg-yellow-500/20 text-yellow-400 rounded-full border border-yellow-500/30">JavaScript (5.8%)</span>
+                        <span class="px-4 py-2 bg-green-500/20 text-green-400 rounded-full border border-green-500/30">HTML (2.9%)</span>
+                        <span class="px-4 py-2 bg-purple-500/20 text-purple-400 rounded-full border border-purple-500/30">Shell (1.0%)</span>
+                    </div>
+                </div>
+
+                <!-- Similar Repositories -->
+                <div>
+                    <h3 class="text-xl font-semibold mb-6">Similar Repositories</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="bg-dark rounded-lg p-4 border border-border hover:border-primary/30 transition-colors">
+                            <div class="flex items-center space-x-3 mb-3">
+                                <div class="w-8 h-8 rounded-lg bg-gradient-to-r from-red-500 to-pink-600 flex items-center justify-center">
+                                    <i class="fas fa-atom text-white text-sm"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-medium" data-bind="similarRepo.name">atom/atom</h4>
+                                    <p class="text-sm text-gray-400">Similarity: 85%</p>
+                                </div>
+                            </div>
+                            <p class="text-sm text-gray-300" data-mock="true">A hackable text editor for the 21st Century</p>
+                        </div>
+
+                        <div class="bg-dark rounded-lg p-4 border border-border hover:border-primary/30 transition-colors">
+                            <div class="flex items-center space-x-3 mb-3">
+                                <div class="w-8 h-8 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-600 flex items-center justify-center">
+                                    <i class="fas fa-feather text-white text-sm"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-medium" data-bind="similarRepo.name">sublimehq/sublime_text</h4>
+                                    <p class="text-sm text-gray-400">Similarity: 78%</p>
+                                </div>
+                            </div>
+                            <p class="text-sm text-gray-300" data-mock="true">A sophisticated text editor for code, markup and prose</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- @END_COMPONENT: DetailedAnalysis -->
+
+    <!-- @COMPONENT: ComparisonSection [side-by-side repository comparison] -->
+    <section class="py-16 bg-dark">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl font-bold gradient-text mb-4">Repository Comparison</h2>
+                <p class="text-gray-400">Compare repositories side-by-side to make informed decisions</p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Repository A -->
+                <div class="bg-card border border-border rounded-xl p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-xl font-semibold">Repository A</h3>
+                        <button class="text-primary hover:text-secondary text-sm" data-event="click:selectRepository">Select Repository</button>
+                    </div>
+                    
+                    <div class="text-center py-8 border-2 border-dashed border-border rounded-lg">
+                        <i class="fas fa-plus-circle text-4xl text-gray-600 mb-4"></i>
+                        <p class="text-gray-400">Click to select a repository for comparison</p>
+                    </div>
+                </div>
+
+                <!-- Repository B -->
+                <div class="bg-card border border-border rounded-xl p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-xl font-semibold">Repository B</h3>
+                        <button class="text-primary hover:text-secondary text-sm" data-event="click:selectRepository">Select Repository</button>
+                    </div>
+                    
+                    <div class="text-center py-8 border-2 border-dashed border-border rounded-lg">
+                        <i class="fas fa-plus-circle text-4xl text-gray-600 mb-4"></i>
+                        <p class="text-gray-400">Click to select a repository for comparison</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Comparison Results (shown when repositories are selected) -->
+            <div class="mt-12 bg-card border border-border rounded-xl p-8" style="display: none;" data-implementation="Show when repositories selected">
+                <h3 class="text-2xl font-bold mb-8 text-center">Comparison Results</h3>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="border-b border-border">
+                                <th class="text-left py-4 font-medium">Metric</th>
+                                <th class="text-center py-4 font-medium">Repository A</th>
+                                <th class="text-center py-4 font-medium">Repository B</th>
+                                <th class="text-center py-4 font-medium">Winner</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border">
+                            <tr>
+                                <td class="py-4 font-medium">Originality</td>
+                                <td class="py-4 text-center">
+                                    <span class="text-primary font-bold">8.7</span>
+                                </td>
+                                <td class="py-4 text-center">
+                                    <span class="text-accent font-bold">7.2</span>
+                                </td>
+                                <td class="py-4 text-center">
+                                    <i class="fas fa-trophy text-primary"></i>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-4 font-medium">Completeness</td>
+                                <td class="py-4 text-center">
+                                    <span class="text-primary font-bold">9.1</span>
+                                </td>
+                                <td class="py-4 text-center">
+                                    <span class="text-accent font-bold">8.8</span>
+                                </td>
+                                <td class="py-4 text-center">
+                                    <i class="fas fa-trophy text-primary"></i>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-4 font-medium">Marketability</td>
+                                <td class="py-4 text-center">
+                                    <span class="text-primary font-bold">7.9</span>
+                                </td>
+                                <td class="py-4 text-center">
+                                    <span class="text-accent font-bold">8.4</span>
+                                </td>
+                                <td class="py-4 text-center">
+                                    <i class="fas fa-trophy text-accent"></i>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- @END_COMPONENT: ComparisonSection -->
+
+    <!-- @COMPONENT: UserProfile [saved repositories and user data] -->
+    <section class="py-16 bg-gradient-to-b from-dark to-card">
+        <div class="max-w-6xl mx-auto px-6">
+            <div class="bg-card border border-border rounded-2xl p-8">
+                <div class="flex items-start justify-between mb-8">
+                    <div class="flex items-center space-x-6">
+                        <!-- User profile dashboard image -->
+                        <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=150&h=150" 
+                             alt="User profile picture" 
+                             class="w-20 h-20 rounded-2xl object-cover border-2 border-primary/30" />
+                        <div>
+                            <h2 class="text-3xl font-bold" data-bind="user.name">John Doe</h2>
+                            <p class="text-gray-400 text-lg" data-bind="user.title">Senior Software Engineer</p>
+                            <div class="flex items-center space-x-4 mt-2">
+                                <div class="flex items-center space-x-1">
+                                    <i class="fas fa-bookmark text-primary"></i>
+                                    <span data-bind="user.savedRepos">24 saved repos</span>
+                                </div>
+                                <div class="flex items-center space-x-1">
+                                    <i class="fas fa-chart-line text-accent"></i>
+                                    <span data-bind="user.analyses">47 analyses</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="px-6 py-2 bg-primary hover:bg-secondary text-white rounded-lg transition-colors font-medium">
+                        Edit Profile
+                    </button>
+                </div>
+
+                <!-- Saved Repositories -->
+                <div>
+                    <h3 class="text-2xl font-semibold mb-6">Saved Repositories</h3>
+                    
+                    <div class="space-y-4">
+                        <!-- @MAP: savedRepos.map(repo => ( -->
+                        <div class="bg-dark rounded-lg p-6 border border-border hover:border-primary/30 transition-all duration-300">
+                            <div class="flex items-start justify-between">
+                                <div class="flex items-center space-x-4">
+                                    <div class="w-12 h-12 rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
+                                        <i class="fab fa-github text-white text-xl"></i>
+                                    </div>
+                                    <div>
+                                        <h4 class="text-lg font-semibold" data-bind="repo.name">tensorflow/tensorflow</h4>
+                                        <p class="text-gray-400 text-sm" data-bind="repo.description">An Open Source Machine Learning Framework for Everyone</p>
+                                        <div class="flex items-center space-x-4 mt-2 text-sm text-gray-400">
+                                            <span data-bind="repo.savedDate">Saved 3 days ago</span>
+                                            <span data-bind="repo.lastAnalyzed">Last analyzed: 1 week ago</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center space-x-3">
+                                    <div class="text-center">
+                                        <div class="text-2xl font-bold gradient-text">8.9</div>
+                                        <div class="text-xs text-gray-400">Overall</div>
+                                    </div>
+                                    <button class="p-2 text-gray-400 hover:text-primary transition-colors"
+                                            data-event="click:removeFromSaved">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-dark rounded-lg p-6 border border-border hover:border-primary/30 transition-all duration-300">
+                            <div class="flex items-start justify-between">
+                                <div class="flex items-center space-x-4">
+                                    <div class="w-12 h-12 rounded-lg bg-gradient-to-r from-green-500 to-teal-600 flex items-center justify-center">
+                                        <i class="fab fa-vuejs text-white text-xl"></i>
+                                    </div>
+                                    <div>
+                                        <h4 class="text-lg font-semibold" data-bind="repo.name">vuejs/vue</h4>
+                                        <p class="text-gray-400 text-sm" data-bind="repo.description">Vue.js is a progressive framework for building user interfaces</p>
+                                        <div class="flex items-center space-x-4 mt-2 text-sm text-gray-400">
+                                            <span data-bind="repo.savedDate">Saved 1 week ago</span>
+                                            <span data-bind="repo.lastAnalyzed">Last analyzed: 2 weeks ago</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center space-x-3">
+                                    <div class="text-center">
+                                        <div class="text-2xl font-bold gradient-text">8.4</div>
+                                        <div class="text-xs text-gray-400">Overall</div>
+                                    </div>
+                                    <button class="p-2 text-gray-400 hover:text-primary transition-colors"
+                                            data-event="click:removeFromSaved">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- @END_MAP )) -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- @END_COMPONENT: UserProfile -->
+
+    <!-- @COMPONENT: Footer [navigation and links] -->
+    <footer class="bg-card border-t border-border py-12">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div>
+                    <div class="flex items-center space-x-3 mb-4">
+                        <div class="w-8 h-8 rounded-lg bg-gradient-to-r from-primary to-secondary flex items-center justify-center">
+                            <i class="fas fa-code text-white text-sm"></i>
+                        </div>
+                        <h3 class="text-xl font-bold gradient-text">RepoAnalyzer</h3>
+                    </div>
+                    <p class="text-gray-400 text-sm">AI-powered GitHub repository analysis and discovery platform.</p>
+                </div>
+                <div>
+                    <h4 class="font-semibold mb-4">Features</h4>
+                    <ul class="space-y-2 text-sm text-gray-400">
+                        <li><a href="#" class="hover:text-white transition-colors">Repository Search</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">AI Analysis</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Comparison Tool</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Similar Repos</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-semibold mb-4">Resources</h4>
+                    <ul class="space-y-2 text-sm text-gray-400">
+                        <li><a href="#" class="hover:text-white transition-colors">Documentation</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">API Reference</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Community</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Support</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-semibold mb-4">Company</h4>
+                    <ul class="space-y-2 text-sm text-gray-400">
+                        <li><a href="#" class="hover:text-white transition-colors">About</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Blog</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Careers</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Privacy</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="border-t border-border pt-8 mt-8 text-center text-gray-400 text-sm">
+                <p>&copy; 2024 RepoAnalyzer. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+    <!-- @END_COMPONENT: Footer -->
+
+    <script>
+        // TODO: Implement business logic, API calls, and state management
+        
+        // Interactive functionality placeholders
+        (function() {
+            // Search functionality
+            const searchInput = document.querySelector('input[data-event*="handleSearch"]');
+            if (searchInput) {
+                searchInput.addEventListener('input', function(e) {
+                    // TODO: Implement debounced search with GitHub API
+                    console.log('Search query:', e.target.value);
+                });
+            }
+
+            // Repository analysis
+            const analyzeButton = document.querySelector('button[data-event*="handleAnalyze"]');
+            if (analyzeButton) {
+                analyzeButton.addEventListener('click', function() {
+                    // TODO: Implement repository analysis with Gemini 2.5 Pro
+                    console.log('Analyze repository');
+                });
+            }
+
+            // View details functionality
+            const viewDetailsButtons = document.querySelectorAll('button[data-event*="viewDetails"]');
+            viewDetailsButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    // TODO: Navigate to repository detail view
+                    console.log('View repository details');
+                });
+            });
+
+            // Save repository functionality
+            const saveButtons = document.querySelectorAll('button[data-event*="saveRepository"]');
+            saveButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    // TODO: Save repository to user profile
+                    console.log('Save repository');
+                });
+            });
+
+            // Comparison functionality
+            const compareButtons = document.querySelectorAll('button[data-event*="compareRepository"]');
+            compareButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    // TODO: Add repository to comparison
+                    console.log('Compare repository');
+                });
+            });
+        })();
+    </script>
+</body>
+</html>
