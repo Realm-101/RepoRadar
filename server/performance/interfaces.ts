@@ -283,7 +283,7 @@ export interface IQueryMonitor {
   /**
    * Start monitoring a query
    */
-  startQuery(queryId: string, query: string): void;
+  startQuery(queryId: string, query: string, connectionId?: string): void;
   
   /**
    * End monitoring a query
@@ -309,4 +309,275 @@ export interface IQueryMonitor {
    * Set slow query threshold
    */
   setSlowQueryThreshold(thresholdMs: number): void;
+}
+
+// Cache Management Interfaces
+
+export interface CacheConfig {
+  key: string;
+  ttl: number;
+  invalidationStrategy: 'time' | 'event' | 'manual';
+  compressionEnabled: boolean;
+  maxSize?: number;
+}
+
+export interface CacheEntry {
+  key: string;
+  data: any;
+  timestamp: Date;
+  ttl: number;
+  hits: number;
+  size: number;
+  compressed?: boolean;
+}
+
+export interface CacheStats {
+  totalEntries: number;
+  totalSize: number;
+  hitRate: number;
+  missRate: number;
+  evictionCount: number;
+  oldestEntry: Date | null;
+  newestEntry: Date | null;
+}
+
+export interface ICacheManager {
+  /**
+   * Store data in cache with TTL
+   */
+  set(key: string, data: any, ttl?: number): Promise<void>;
+  
+  /**
+   * Retrieve data from cache
+   */
+  get<T = any>(key: string): Promise<T | null>;
+  
+  /**
+   * Check if key exists in cache
+   */
+  has(key: string): Promise<boolean>;
+  
+  /**
+   * Delete specific key from cache
+   */
+  delete(key: string): Promise<boolean>;
+  
+  /**
+   * Clear all cache entries
+   */
+  clear(): Promise<void>;
+  
+  /**
+   * Get cache statistics
+   */
+  getStats(): Promise<CacheStats>;
+  
+  /**
+   * Invalidate cache entries by pattern
+   */
+  invalidatePattern(pattern: string): Promise<number>;
+  
+  /**
+   * Set cache configuration
+   */
+  configure(config: Partial<CacheConfig>): void;
+  
+  /**
+   * Cleanup expired entries
+   */
+  cleanup(): Promise<number>;
+  
+  /**
+   * Get cache entry metadata
+   */
+  getMetadata(key: string): Promise<Omit<CacheEntry, 'data'> | null>;
+}
+
+// Compression Middleware Interfaces
+
+export interface CompressionConfig {
+  threshold: number; // Minimum response size to compress (bytes)
+  algorithms: ('gzip' | 'brotli' | 'deflate')[];
+  level: number; // Compression level (1-9 for gzip, 1-11 for brotli)
+  chunkSize: number; // Chunk size for streaming compression
+  memLevel: number; // Memory level for gzip (1-9)
+}
+
+export interface CompressionStats {
+  totalRequests: number;
+  compressedRequests: number;
+  compressionRatio: number; // Average compression ratio
+  algorithmUsage: Record<string, number>;
+  bytesSaved: number;
+  processingTime: number; // Average compression time in ms
+}
+
+export interface ICompressionMiddleware {
+  /**
+   * Compress response data
+   */
+  compress(data: Buffer | string, acceptedEncodings: string[]): Promise<{
+    data: Buffer;
+    encoding: string;
+    originalSize: number;
+    compressedSize: number;
+    compressionTime: number;
+  }>;
+  
+  /**
+   * Check if response should be compressed
+   */
+  shouldCompress(size: number, contentType?: string): boolean;
+  
+  /**
+   * Get best compression algorithm for client
+   */
+  getBestAlgorithm(acceptedEncodings: string[]): string | null;
+  
+  /**
+   * Get compression statistics
+   */
+  getStats(): CompressionStats;
+  
+  /**
+   * Configure compression settings
+   */
+  configure(config: Partial<CompressionConfig>): void;
+  
+  /**
+   * Reset compression statistics
+   */
+  resetStats(): void;
+}
+
+// Pagination Interfaces
+
+export interface IPaginationMiddleware {
+  /**
+   * Apply pagination to a dataset
+   */
+  paginate<T>(data: T[], total: number, page: number, limit: number): {
+    data: T[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+      hasNext: boolean;
+      hasPrev: boolean;
+      nextPage: number | null;
+      prevPage: number | null;
+    };
+  };
+  
+  /**
+   * Extract pagination parameters from request
+   */
+  extractPaginationParams(query: any): {
+    page: number;
+    limit: number;
+    offset: number;
+  };
+  
+  /**
+   * Validate pagination parameters
+   */
+  validatePaginationParams(params: any): boolean;
+  
+  /**
+   * Get pagination configuration
+   */
+  getConfig(): {
+    defaultLimit: number;
+    maxLimit: number;
+    minLimit: number;
+  };
+}
+
+// GitHub API Optimization Interfaces
+
+export interface GitHubRateLimit {
+  limit: number;
+  remaining: number;
+  reset: number; // Unix timestamp
+  used: number;
+  resource: string;
+}
+
+export interface GitHubRequestConfig {
+  url: string;
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  headers?: Record<string, string>;
+  data?: any;
+  priority?: 'low' | 'normal' | 'high';
+  cacheable?: boolean;
+  cacheKey?: string;
+  cacheTtl?: number;
+}
+
+export interface GitHubBatchRequest {
+  id: string;
+  config: GitHubRequestConfig;
+  resolve: (value: any) => void;
+  reject: (error: any) => void;
+  timestamp: Date;
+}
+
+export interface GitHubOptimizationStats {
+  totalRequests: number;
+  batchedRequests: number;
+  cachedRequests: number;
+  rateLimitHits: number;
+  averageResponseTime: number;
+  bytesSaved: number;
+  requestsSaved: number;
+}
+
+export interface IGitHubOptimizer {
+  /**
+   * Make an optimized GitHub API request
+   */
+  request<T = any>(config: GitHubRequestConfig): Promise<T>;
+  
+  /**
+   * Batch multiple requests together
+   */
+  batchRequest<T = any>(configs: GitHubRequestConfig[]): Promise<T[]>;
+  
+  /**
+   * Get current rate limit status
+   */
+  getRateLimit(): Promise<GitHubRateLimit>;
+  
+  /**
+   * Check if request should be cached
+   */
+  shouldCache(config: GitHubRequestConfig): boolean;
+  
+  /**
+   * Get optimization statistics
+   */
+  getStats(): GitHubOptimizationStats;
+  
+  /**
+   * Configure GitHub API settings
+   */
+  configure(options: {
+    token?: string;
+    baseUrl?: string;
+    batchSize?: number;
+    batchDelay?: number;
+    rateLimitBuffer?: number;
+    defaultCacheTtl?: number;
+  }): void;
+  
+  /**
+   * Clear request cache
+   */
+  clearCache(): Promise<void>;
+  
+  /**
+   * Reset optimization statistics
+   */
+  resetStats(): void;
 }

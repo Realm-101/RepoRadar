@@ -20,7 +20,10 @@ import {
   createSubscriptionSchema,
   findSimilarSchema
 } from "./middleware/validation";
+import { repositoryPagination, analysisPagination, searchPagination } from "./middleware/pagination";
 import { createErrorHandler, asyncHandler } from "./utils/errorHandler";
+import { createMetricsAPI } from "./performance/MetricsAPI.js";
+import { getGlobalPerformanceMonitor } from "./performance/index.js";
 
 interface AuthenticatedRequest extends Request {
   user: {
@@ -43,6 +46,131 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/health', healthCheck);
   app.get('/health/ready', readinessCheck);
   app.get('/health/live', livenessCheck);
+
+  // Performance monitoring endpoints
+  const performanceMonitor = getGlobalPerformanceMonitor();
+  const metricsAPI = createMetricsAPI(performanceMonitor);
+  app.use('/api/performance', metricsAPI);
+
+  // Performance alerting endpoints
+  const { createAlertingSystem } = await import('./performance/AlertingSystem.js');
+  const alertingSystem = createAlertingSystem(performanceMonitor);
+  
+  // Initialize with default alerts and start the system
+  alertingSystem.createDefaultAlerts();
+  await alertingSystem.start();
+
+  // Alert management endpoints
+  app.get('/api/performance/alerts/configs', (req, res) => {
+    try {
+      const configs = alertingSystem.getAlertConfigs();
+      res.json({ configs });
+    } catch (error) {
+      console.error('Error retrieving alert configs:', error);
+      res.status(500).json({ error: 'Failed to retrieve alert configurations' });
+    }
+  });
+
+  app.post('/api/performance/alerts/configs', (req, res) => {
+    try {
+      const config = req.body;
+      alertingSystem.addAlertConfig(config);
+      res.json({ message: 'Alert configuration added', config });
+    } catch (error) {
+      console.error('Error adding alert config:', error);
+      res.status(500).json({ error: 'Failed to add alert configuration' });
+    }
+  });
+
+  app.put('/api/performance/alerts/configs/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      const updated = alertingSystem.updateAlertConfig(id, updates);
+      
+      if (updated) {
+        res.json({ message: 'Alert configuration updated' });
+      } else {
+        res.status(404).json({ error: 'Alert configuration not found' });
+      }
+    } catch (error) {
+      console.error('Error updating alert config:', error);
+      res.status(500).json({ error: 'Failed to update alert configuration' });
+    }
+  });
+
+  app.delete('/api/performance/alerts/configs/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      const removed = alertingSystem.removeAlertConfig(id);
+      
+      if (removed) {
+        res.json({ message: 'Alert configuration removed' });
+      } else {
+        res.status(404).json({ error: 'Alert configuration not found' });
+      }
+    } catch (error) {
+      console.error('Error removing alert config:', error);
+      res.status(500).json({ error: 'Failed to remove alert configuration' });
+    }
+  });
+
+  app.get('/api/performance/alerts/active', (req, res) => {
+    try {
+      const alerts = alertingSystem.getActiveAlerts();
+      res.json({ alerts });
+    } catch (error) {
+      console.error('Error retrieving active alerts:', error);
+      res.status(500).json({ error: 'Failed to retrieve active alerts' });
+    }
+  });
+
+  app.get('/api/performance/alerts/history', (req, res) => {
+    try {
+      const { limit } = req.query;
+      const alerts = alertingSystem.getAlertHistory(limit ? parseInt(limit as string) : undefined);
+      res.json({ alerts });
+    } catch (error) {
+      console.error('Error retrieving alert history:', error);
+      res.status(500).json({ error: 'Failed to retrieve alert history' });
+    }
+  });
+
+  app.post('/api/performance/alerts/:id/resolve', (req, res) => {
+    try {
+      const { id } = req.params;
+      const resolved = alertingSystem.resolveAlert(id);
+      
+      if (resolved) {
+        res.json({ message: 'Alert resolved' });
+      } else {
+        res.status(404).json({ error: 'Alert not found' });
+      }
+    } catch (error) {
+      console.error('Error resolving alert:', error);
+      res.status(500).json({ error: 'Failed to resolve alert' });
+    }
+  });
+
+  app.get('/api/performance/alerts/stats', (req, res) => {
+    try {
+      const stats = alertingSystem.getStats();
+      res.json({ stats });
+    } catch (error) {
+      console.error('Error retrieving alerting stats:', error);
+      res.status(500).json({ error: 'Failed to retrieve alerting statistics' });
+    }
+  });
+
+  app.post('/api/performance/alerts/evaluate', async (req, res) => {
+    try {
+      await alertingSystem.evaluateAlerts();
+      res.json({ message: 'Alert evaluation completed' });
+    } catch (error) {
+      console.error('Error evaluating alerts:', error);
+      res.status(500).json({ error: 'Failed to evaluate alerts' });
+    }
+  });
 
   // Auth middleware
   await setupAuth(app);
@@ -521,11 +649,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Recent repositories (must be before :id route)
-  app.get('/api/repositories/recent', async (req, res) => {
+  app.get('/api/repositories/recent', repositoryPagination, async (req: any, res: any) => {
     try {
-      const { limit = 10 } = req.query;
-      const recent = await storage.getRecentRepositories(Number(limit));
-      res.json(recent);
+      const { limit, offset } = req.pagination;
+      
+      // Get total count for pagination metadata
+      const totalCount = await storage.getRepositoryCount();
+      
+      // Get paginated recent repositories
+      const recent = await storage.getRecentRepositoriesPaginated(limit, offset);
+      
+      // Return paginated response
+      const paginatedResult = res.paginate(recent, totalCount);
+      res.json(paginatedResult);
     } catch (error) {
       console.error("Error fetching recent repositories:", error);
       res.status(500).json({ message: "Failed to fetch recent repositories" });
@@ -717,11 +853,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Recent analyses
-  app.get('/api/analyses/recent', async (req, res) => {
+  app.get('/api/analyses/recent', analysisPagination, async (req: any, res: any) => {
     try {
-      const { limit = 10 } = req.query;
-      const analyses = await storage.getRecentAnalyses(undefined, Number(limit));
-      res.json(analyses);
+      const { limit, offset } = req.pagination;
+      
+      // Get total count for pagination metadata
+      const totalCount = await storage.getAnalysisCount();
+      
+      // Get paginated recent analyses
+      const analyses = await storage.getRecentAnalysesPaginated(undefined, limit, offset);
+      
+      // Return paginated response
+      const paginatedResult = res.paginate(analyses, totalCount);
+      res.json(paginatedResult);
     } catch (error) {
       console.error("Error fetching recent analyses:", error);
       res.status(500).json({ message: "Failed to fetch recent analyses" });
@@ -762,11 +906,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/saved-repositories', isAuthenticated, async (req: any, res) => {
+  app.get('/api/saved-repositories', isAuthenticated, repositoryPagination, async (req: any, res: any) => {
     try {
       const userId = req.user.claims.sub;
-      const savedRepos = await storage.getSavedRepositories(userId);
-      res.json(savedRepos);
+      const { limit, offset } = req.pagination;
+      
+      // Get total count for pagination metadata
+      const totalCount = await storage.getSavedRepositoriesCount(userId);
+      
+      // Get paginated saved repositories
+      const savedRepos = await storage.getSavedRepositoriesPaginated(userId, limit, offset);
+      
+      // Return paginated response
+      const paginatedResult = res.paginate(savedRepos, totalCount);
+      res.json(paginatedResult);
     } catch (error) {
       console.error("Error fetching saved repositories:", error);
       res.status(500).json({ message: "Failed to fetch saved repositories" });

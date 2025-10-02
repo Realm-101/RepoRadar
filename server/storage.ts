@@ -98,16 +98,22 @@ export interface IStorage {
   upsertRepository(repo: InsertRepository & { id: string }): Promise<Repository>;
   searchRepositories(query: string, limit?: number): Promise<Repository[]>;
   getRecentRepositories(limit?: number): Promise<Repository[]>;
+  getRecentRepositoriesPaginated(limit: number, offset: number): Promise<Repository[]>;
+  getRepositoryCount(): Promise<number>;
 
   // Analysis operations
   getAnalysis(repositoryId: string, userId?: string): Promise<RepositoryAnalysis | undefined>;
   createAnalysis(analysis: InsertAnalysis): Promise<RepositoryAnalysis>;
   getRecentAnalyses(userId?: string, limit?: number): Promise<(RepositoryAnalysis & { repository: Repository })[]>;
+  getRecentAnalysesPaginated(userId?: string, limit?: number, offset?: number): Promise<(RepositoryAnalysis & { repository: Repository })[]>;
+  getAnalysisCount(userId?: string): Promise<number>;
 
   // Saved repositories operations
   saveRepository(userId: string, repositoryId: string): Promise<SavedRepository>;
   unsaveRepository(userId: string, repositoryId: string): Promise<void>;
   getSavedRepositories(userId: string): Promise<(SavedRepository & { repository: Repository })[]>;
+  getSavedRepositoriesPaginated(userId: string, limit: number, offset: number): Promise<(SavedRepository & { repository: Repository })[]>;
+  getSavedRepositoriesCount(userId: string): Promise<number>;
   isRepositorySaved(userId: string, repositoryId: string): Promise<boolean>;
 
   // Similar repositories operations
@@ -280,6 +286,22 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
   }
 
+  async getRecentRepositoriesPaginated(limit: number, offset: number): Promise<Repository[]> {
+    return await db
+      .select()
+      .from(repositories)
+      .orderBy(desc(repositories.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async getRepositoryCount(): Promise<number> {
+    const [result] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(repositories);
+    return result.count;
+  }
+
   // Analysis operations
   async getAnalysis(repositoryId: string, userId?: string): Promise<RepositoryAnalysis | undefined> {
     const conditions = [eq(repositoryAnalyses.repositoryId, repositoryId)];
@@ -336,6 +358,51 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
   }
 
+  async getRecentAnalysesPaginated(userId?: string, limit = 10, offset = 0): Promise<(RepositoryAnalysis & { repository: Repository })[]> {
+    const query = db
+      .select({
+        id: repositoryAnalyses.id,
+        repositoryId: repositoryAnalyses.repositoryId,
+        userId: repositoryAnalyses.userId,
+        originality: repositoryAnalyses.originality,
+        completeness: repositoryAnalyses.completeness,
+        marketability: repositoryAnalyses.marketability,
+        monetization: repositoryAnalyses.monetization,
+        usefulness: repositoryAnalyses.usefulness,
+        overallScore: repositoryAnalyses.overallScore,
+        summary: repositoryAnalyses.summary,
+        strengths: repositoryAnalyses.strengths,
+        weaknesses: repositoryAnalyses.weaknesses,
+        recommendations: repositoryAnalyses.recommendations,
+        createdAt: repositoryAnalyses.createdAt,
+        repository: repositories,
+      })
+      .from(repositoryAnalyses)
+      .innerJoin(repositories, eq(repositoryAnalyses.repositoryId, repositories.id));
+
+    if (userId) {
+      query.where(eq(repositoryAnalyses.userId, userId));
+    }
+
+    return await query
+      .orderBy(desc(repositoryAnalyses.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async getAnalysisCount(userId?: string): Promise<number> {
+    const query = db
+      .select({ count: sql<number>`count(*)` })
+      .from(repositoryAnalyses);
+
+    if (userId) {
+      query.where(eq(repositoryAnalyses.userId, userId));
+    }
+
+    const [result] = await query;
+    return result.count;
+  }
+
   async getUserAnalyses(userId: string): Promise<any[]> {
     const results = await db
       .select({
@@ -389,6 +456,31 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(repositories, eq(savedRepositories.repositoryId, repositories.id))
       .where(eq(savedRepositories.userId, userId))
       .orderBy(desc(savedRepositories.createdAt));
+  }
+
+  async getSavedRepositoriesPaginated(userId: string, limit: number, offset: number): Promise<(SavedRepository & { repository: Repository })[]> {
+    return await db
+      .select({
+        id: savedRepositories.id,
+        userId: savedRepositories.userId,
+        repositoryId: savedRepositories.repositoryId,
+        createdAt: savedRepositories.createdAt,
+        repository: repositories,
+      })
+      .from(savedRepositories)
+      .innerJoin(repositories, eq(savedRepositories.repositoryId, repositories.id))
+      .where(eq(savedRepositories.userId, userId))
+      .orderBy(desc(savedRepositories.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async getSavedRepositoriesCount(userId: string): Promise<number> {
+    const [result] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(savedRepositories)
+      .where(eq(savedRepositories.userId, userId));
+    return result.count;
   }
 
   async isRepositorySaved(userId: string, repositoryId: string): Promise<boolean> {

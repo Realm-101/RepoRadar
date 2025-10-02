@@ -14,6 +14,38 @@ export { MetricsCollector } from './MetricsCollector.js';
 export { InMemoryMetricsStorage } from './InMemoryMetricsStorage.js';
 export { PerformanceMonitor } from './PerformanceMonitor.js';
 
+// Database performance
+export { ConnectionPool } from './ConnectionPool.js';
+export { IndexManager } from './IndexManager.js';
+export { QueryMonitor } from './QueryMonitor.js';
+
+// Cache management
+export { InMemoryCacheManager, createCacheManager } from './CacheManager.js';
+
+// Compression middleware
+export { CompressionMiddleware, createCompressionMiddleware } from './CompressionMiddleware.js';
+
+// GitHub API optimization
+export { GitHubOptimizer, createGitHubOptimizer, OptimizedGitHubService } from './GitHubOptimizer.js';
+
+// Pagination middleware
+export { PaginationMiddleware, defaultPagination, repositoryPagination, analysisPagination, searchPagination } from './PaginationMiddleware.js';
+
+// API and Streaming
+export { MetricsAPI, createMetricsAPI } from './MetricsAPI.js';
+export { MetricsStreamingService, EnhancedWebSocketService, createEnhancedWebSocketService } from './MetricsStreaming.js';
+
+// Alerting System
+export { 
+  PerformanceAlertingSystem, 
+  ConsoleAlertDelivery, 
+  WebSocketAlertDelivery,
+  createAlertingSystem,
+  type AlertConfig,
+  type PerformanceAlert,
+  type IAlertDelivery
+} from './AlertingSystem.js';
+
 // Convenience factory function
 import { PerformanceMonitor } from './PerformanceMonitor.js';
 
