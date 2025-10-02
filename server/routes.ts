@@ -8,7 +8,19 @@ import { setupAuth, isAuthenticated } from "./replitAuth";
 import { githubService } from "./github";
 import { analyzeRepository, findSimilarRepositories, findSimilarByFunctionality, askAI, generateAIRecommendations } from "./gemini";
 import { insertRepositorySchema, insertAnalysisSchema, insertSavedRepositorySchema } from "@shared/schema";
-import { stripe, createOrRetrieveStripeCustomer, createSubscription, SUBSCRIPTION_PLANS } from "./stripe";
+import { stripe, createOrRetrieveStripeCustomer, createSubscription, SUBSCRIPTION_PLANS, isStripeEnabled } from "./stripe";
+import { analysisRateLimit, searchRateLimit, generalApiRateLimit } from "./middleware/rateLimiter";
+import { 
+  validateBody, 
+  validateQuery, 
+  validateParams,
+  analyzeRepositorySchema,
+  searchRepositoriesSchema,
+  repositoryIdSchema,
+  createSubscriptionSchema,
+  findSimilarSchema
+} from "./middleware/validation";
+import { createErrorHandler, asyncHandler } from "./utils/errorHandler";
 
 interface AuthenticatedRequest extends Request {
   user: {
@@ -26,6 +38,12 @@ interface AuthenticatedRequest extends Request {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Health check endpoints
+  const { healthCheck, readinessCheck, livenessCheck } = await import('./health');
+  app.get('/health', healthCheck);
+  app.get('/health/ready', readinessCheck);
+  app.get('/health/live', livenessCheck);
+
   // Auth middleware
   await setupAuth(app);
 
@@ -186,6 +204,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Stripe subscription endpoint
   app.post('/api/create-subscription', isAuthenticated, async (req: any, res) => {
     try {
+      // Check if Stripe is enabled
+      if (!isStripeEnabled()) {
+        return res.status(503).json({ 
+          error: "Payment processing is currently unavailable" 
+        });
+      }
+
       const { plan } = req.body;
       const userId = req.user.claims.sub;
       const userEmail = req.user.claims.email;
@@ -231,12 +256,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Stripe webhook endpoint
   app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+    // Check if Stripe is enabled and webhook secret is configured
+    if (!isStripeEnabled() || !stripe) {
+      return res.status(503).json({ error: "Stripe webhooks not configured" });
+    }
+
+    if (!process.env.STRIPE_WEBHOOK_SECRET) {
+      console.error('STRIPE_WEBHOOK_SECRET not configured');
+      return res.status(500).json({ error: "Webhook configuration error" });
+    }
+
     const sig = req.headers['stripe-signature'];
     let event: Stripe.Event;
 
     try {
-      // Note: In production, you should set STRIPE_WEBHOOK_SECRET
-      event = stripe.webhooks.constructEvent(req.body, sig!, process.env.STRIPE_WEBHOOK_SECRET || '');
+      event = stripe.webhooks.constructEvent(req.body, sig!, process.env.STRIPE_WEBHOOK_SECRET);
     } catch (err: any) {
       console.error('Webhook signature verification failed:', err.message);
       return res.status(400).send(`Webhook Error: ${err.message}`);
@@ -281,7 +315,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Repository search and analysis
-  app.get('/api/repositories/search', async (req, res) => {
+  app.get('/api/repositories/search', searchRateLimit, validateQuery(searchRepositoriesSchema), asyncHandler(async (req, res) => {
     try {
       const { q: query, limit = 10 } = req.query;
       
@@ -338,7 +372,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/repositories/analyze', async (req, res) => {
+  app.post('/api/repositories/analyze', analysisRateLimit, validateBody(analyzeRepositorySchema), asyncHandler(async (req, res) => {
     try {
       const { url } = req.body;
       

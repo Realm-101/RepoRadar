@@ -1,12 +1,19 @@
 import Stripe from "stripe";
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
+// Graceful degradation for missing Stripe configuration
+const STRIPE_ENABLED = !!process.env.STRIPE_SECRET_KEY;
+
+if (!STRIPE_ENABLED) {
+  console.warn('Stripe not configured - payment features will be disabled');
 }
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2025-07-30.basil",
-});
+export const stripe = STRIPE_ENABLED 
+  ? new Stripe(process.env.STRIPE_SECRET_KEY!, {
+      apiVersion: "2025-07-30.basil",
+    })
+  : null;
+
+export const isStripeEnabled = () => STRIPE_ENABLED;
 
 // Subscription plans configuration
 export const SUBSCRIPTION_PLANS = {

@@ -1,6 +1,16 @@
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const GEMINI_ENABLED = !!process.env.GEMINI_API_KEY;
+
+if (!GEMINI_ENABLED) {
+  console.warn('Gemini API key not configured - AI features will be limited');
+}
+
+const ai = GEMINI_ENABLED 
+  ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
+  : null;
+
+export const isGeminiEnabled = () => GEMINI_ENABLED;
 
 export interface RepositoryAnalysisInput {
   name: string;
@@ -105,6 +115,10 @@ Return a JSON object with this structure:
 }
 
 export async function askAI(question: string): Promise<string> {
+  if (!isGeminiEnabled() || !ai) {
+    return "AI assistant is currently unavailable. Please try again later.";
+  }
+
   try {
     const systemPrompt = `You are an AI assistant for RepoAnalyzer, a GitHub repository analysis platform.
     
@@ -161,6 +175,11 @@ Instructions:
 }
 
 export async function analyzeRepository(repo: RepositoryAnalysisInput): Promise<RepositoryAnalysisResult> {
+  if (!isGeminiEnabled() || !ai) {
+    // Return fallback analysis when AI is not available
+    return createFallbackAnalysis(repo);
+  }
+
   try {
     const systemPrompt = `You are an expert software repository analyst. Analyze the given repository and provide a comprehensive evaluation with detailed reasoning.
 
@@ -308,7 +327,22 @@ ${repo.readme ? `README Preview: ${repo.readme.substring(0, 2000)}...` : 'No REA
     console.error('Error analyzing repository with Gemini:', error);
     
     // Fallback analysis with proper structure
-    return {
+    return createFallbackAnalysis(repo);
+  }
+}
+
+function createFallbackAnalysis(repo: RepositoryAnalysisInput): RepositoryAnalysisResult {
+  // Calculate basic scores based on repository metrics
+  const starScore = Math.min(10, Math.max(1, Math.log10(repo.stars + 1) * 2));
+  const forkScore = Math.min(10, Math.max(1, Math.log10(repo.forks + 1) * 2.5));
+  const sizeScore = repo.size > 0 ? Math.min(10, Math.max(1, Math.log10(repo.size) * 1.5)) : 5;
+  const languageBonus = repo.language ? 1 : 0;
+  const topicsBonus = repo.topics.length > 0 ? Math.min(2, repo.topics.length * 0.5) : 0;
+
+  const baseScore = (starScore + forkScore + sizeScore) / 3 + languageBonus + topicsBonus;
+  const normalizedScore = Math.min(10, Math.max(1, baseScore));
+
+  return {
       originality: 5,
       completeness: 5,
       marketability: 5,
