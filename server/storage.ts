@@ -1269,7 +1269,7 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     
-    // TODO: Send email invitation
+    // Note: Email invitation functionality can be added in future enhancement
     return newInvitation;
   }
 

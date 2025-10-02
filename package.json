@@ -11,7 +11,21 @@
     "db:push": "drizzle-kit push",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "test:performance": "vitest run tests/PerformanceBenchmark.test.ts",
+    "test:load": "vitest run server/performance/__tests__/LoadTesting.integration.test.ts",
+    "test:e2e": "vitest run tests/EndToEnd.integration.test.ts",
+    "deploy": "bash scripts/deploy.sh",
+    "deploy:staging": "bash scripts/deploy.sh --environment staging",
+    "deploy:production": "bash scripts/deploy.sh --environment production",
+    "deploy:windows": "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1",
+    "deploy:docker": "docker-compose -f docker/docker-compose.performance.yml up -d",
+    "deploy:docker:scale": "docker-compose -f docker/docker-compose.performance.yml up -d --scale reporadar=3",
+    "config:validate": "tsx scripts/validate-config.js",
+    "config:export": "tsx scripts/validate-config.js --export",
+    "config:summary": "tsx scripts/validate-config.js --summary",
+    "performance:dashboard": "echo 'Performance dashboard available at http://localhost:3000/api/performance/dashboard'",
+    "health:check": "curl -f http://localhost:3000/health || echo 'Health check failed - ensure server is running'"
   },
   "dependencies": {
     "@google/genai": "^1.13.0",
