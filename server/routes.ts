@@ -181,6 +181,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Admin dashboard API
   app.use('/api/admin', createAdminRouter());
 
+  // Job status API
+  const { createJobRouter } = await import('./jobs/jobRoutes');
+  app.use('/api/jobs', createJobRouter());
+
   // Analytics middleware - track all API requests
   app.use('/api', analyticsMiddleware);
 
