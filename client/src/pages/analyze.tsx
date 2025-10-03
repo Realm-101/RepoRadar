@@ -14,6 +14,7 @@ import { ProgressIndicator } from "@/components/progress-indicator";
 import { AnalysisRadarChart, LanguageDistributionChart } from "@/components/analysis-chart";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
+import { trackRepositoryAnalysis, trackExport, trackPageView } from "@/lib/analytics";
 
 export default function Analyze() {
   const [, setLocation] = useLocation();
@@ -32,6 +33,9 @@ export default function Analyze() {
     if (urlParam) {
       setUrl(decodeURIComponent(urlParam));
     }
+    
+    // Track page view
+    trackPageView('/analyze');
   }, []);
 
   const analyzeRepositoryMutation = useMutation({
@@ -64,6 +68,14 @@ export default function Analyze() {
         title: "Analysis Complete",
         description: "Repository has been analyzed successfully.",
       });
+      
+      // Track successful analysis
+      trackRepositoryAnalysis(url, true, {
+        repositoryName: data.repository?.fullName,
+        language: data.repository?.language,
+        stars: data.repository?.stars,
+        overallScore: data.overallScore,
+      });
     },
     onError: (error: Error) => {
       console.log('Analysis ERROR:', error);
@@ -85,6 +97,11 @@ export default function Analyze() {
         title: "Analysis Failed",
         description: error.message || "Failed to analyze repository. Please try again.",
         variant: "destructive",
+      });
+      
+      // Track failed analysis
+      trackRepositoryAnalysis(url, false, {
+        errorMessage: error.message,
       });
     },
   });
@@ -506,12 +523,23 @@ export default function Analyze() {
         title: "PDF Generated",
         description: `Report saved as ${fileName}`,
       });
+      
+      // Track successful export
+      trackExport('pdf', 'analysis', true, {
+        repositoryName: analysis.repository?.name,
+      });
     } catch (error) {
       console.error('Error generating PDF:', error);
       toast({
         title: "PDF Generation Failed",
         description: "Unable to generate PDF report. Please try again.",
         variant: "destructive",
+      });
+      
+      // Track failed export
+      trackExport('pdf', 'analysis', false, {
+        repositoryName: analysis.repository?.name,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
       });
     } finally {
       setIsGeneratingPDF(false);

@@ -30,9 +30,11 @@ import { AIAssistant } from "@/components/ai-assistant";
 import OnboardingTour from "@/components/onboarding-tour";
 import { SkipLink } from "@/components/skip-link";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
+import { usePageTracking } from "@/hooks/usePageTracking";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
+  usePageTracking(); // Track page views automatically
 
   return (
     <Switch>

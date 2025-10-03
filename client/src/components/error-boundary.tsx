@@ -3,6 +3,7 @@ import { Component, ReactNode } from 'react';
 import { AppError } from '@/../../shared/errors';
 import { errorHandler } from '@/lib/error-handler';
 import { ErrorMessage } from './error-message';
+import { trackError } from '@/lib/analytics';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -57,6 +58,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
     // Log error
     console.error('ErrorBoundary caught an error:', error, errorInfo);
+
+    // Track error in analytics
+    trackError(error, {
+      componentStack: errorInfo.componentStack,
+      errorBoundary: true,
+    });
 
     // Call onError callback if provided
     if (this.props.onError) {

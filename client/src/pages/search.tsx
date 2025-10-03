@@ -14,6 +14,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ChevronDown, ChevronUp, Filter, Search as SearchIcon, Star, Calendar, Code, TrendingUp } from "lucide-react";
 import { LoadingSkeleton } from "@/components/skeleton-loader";
 import { ContentTransition } from "@/components/content-transition";
+import { trackSearch, trackPageView } from "@/lib/analytics";
+import { useEffect } from "react";
 
 interface SearchFilters {
   language: string;
@@ -46,6 +48,11 @@ export default function Search() {
     topics: []
   });
   const [topicInput, setTopicInput] = useState("");
+
+  // Track page view
+  useEffect(() => {
+    trackPageView('/search');
+  }, []);
 
   const buildSearchQuery = () => {
     let searchQuery = searchTerm;
@@ -118,7 +125,15 @@ export default function Search() {
       const fullQuery = buildSearchQuery();
       const response = await fetch(`/api/repositories/search?q=${encodeURIComponent(fullQuery)}&sort=${filters.sortBy}`);
       if (!response.ok) throw new Error('Search failed');
-      return response.json();
+      const results = await response.json();
+      
+      // Track search event
+      trackSearch(searchTerm, results.length, {
+        filters: filters,
+        fullQuery: fullQuery,
+      });
+      
+      return results;
     },
     enabled: !!searchTerm,
   });

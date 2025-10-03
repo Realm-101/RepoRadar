@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { trackExport } from '@/lib/analytics';
 
 interface ExportAnalysis {
   id: string;
@@ -245,6 +246,12 @@ export async function exportToPDF(analysis: ExportAnalysis, elementId?: string) 
   // Save the PDF
   const fileName = `analysis_${analysis.repository?.name || 'repository'}_${new Date().toISOString().split('T')[0]}.pdf`;
   pdf.save(fileName);
+  
+  // Track export
+  trackExport('pdf', 'analysis', true, {
+    repositoryName: analysis.repository?.name,
+    hasVisualElement: !!elementId,
+  });
 }
 
 /**
@@ -337,6 +344,12 @@ export function exportToCSV(analyses: ExportAnalysis[] | ExportAnalysis) {
     : `analysis_${dataArray[0]?.repository?.name || 'repository'}_${new Date().toISOString().split('T')[0]}.csv`;
   
   downloadCSV(csvContent, fileName);
+  
+  // Track export
+  trackExport('csv', dataArray.length > 1 ? 'batch_analysis' : 'analysis', true, {
+    repositoryCount: dataArray.length,
+    repositoryName: dataArray.length === 1 ? dataArray[0]?.repository?.name : undefined,
+  });
 }
 
 /**
@@ -405,4 +418,10 @@ export function exportBatchSummary(analyses: ExportAnalysis[]) {
   // Save
   const fileName = `batch_analysis_summary_${new Date().toISOString().split('T')[0]}.pdf`;
   pdf.save(fileName);
+  
+  // Track export
+  trackExport('pdf', 'batch_summary', true, {
+    repositoryCount: analyses.length,
+    averageScore: Math.round(analyses.reduce((sum, a) => sum + (a.overall_score || 0), 0) / analyses.length),
+  });
 }

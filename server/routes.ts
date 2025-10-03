@@ -24,6 +24,9 @@ import { repositoryPagination, analysisPagination, searchPagination } from "./mi
 import { createErrorHandler, asyncHandler } from "./utils/errorHandler";
 import { createMetricsAPI } from "./performance/MetricsAPI.js";
 import { getGlobalPerformanceMonitor } from "./performance/index.js";
+import { analyticsMiddleware, trackEvent } from "./middleware/analytics";
+import { analyticsService } from "./analytics";
+import { createAdminRouter } from "./admin";
 
 interface AuthenticatedRequest extends Request {
   user: {
@@ -174,6 +177,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Auth middleware
   await setupAuth(app);
+
+  // Admin dashboard API
+  app.use('/api/admin', createAdminRouter());
+
+  // Analytics middleware - track all API requests
+  app.use('/api', analyticsMiddleware);
+
+  // Analytics routes
+  app.post('/api/analytics/track', async (req, res) => {
+    try {
+      const { name, category, properties } = req.body;
+      const sessionId = req.headers['x-session-id'] as string || `session_${Date.now()}`;
+      const authReq = req as AuthenticatedRequest;
+      const userId = authReq.user?.claims?.sub;
+
+      await analyticsService.trackEvent({
+        name,
+        category,
+        properties: properties || {},
+        sessionId,
+        userId,
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error tracking analytics event:', error);
+      res.status(500).json({ error: 'Failed to track event' });
+    }
+  });
+
+  app.post('/api/analytics/opt-out', async (req, res) => {
+    try {
+      const sessionId = req.headers['x-session-id'] as string;
+      if (sessionId) {
+        analyticsService.optOut(sessionId);
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error opting out of analytics:', error);
+      res.status(500).json({ error: 'Failed to opt out' });
+    }
+  });
+
+  app.post('/api/analytics/opt-in', async (req, res) => {
+    try {
+      const sessionId = req.headers['x-session-id'] as string;
+      if (sessionId) {
+        analyticsService.optIn(sessionId);
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error opting in to analytics:', error);
+      res.status(500).json({ error: 'Failed to opt in' });
+    }
+  });
 
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: AuthenticatedRequest, res) => {
@@ -470,6 +528,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     // If we have enough local results, return them
     if (localResults.length >= Number(limit)) {
+      // Track search event
+      await trackEvent(req, 'search_query', 'search', {
+        query,
+        resultCount: localResults.length,
+        source: 'local',
+      }).catch(error => console.error('Error tracking search event:', error));
+      
       return res.json(localResults);
     }
 
@@ -506,6 +571,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error(`Error storing repository ${ghRepo.full_name}:`, error);
       }
     }
+
+    // Track search event
+    await trackEvent(req, 'search_query', 'search', {
+      query,
+      resultCount: repositories.length,
+      source: 'github',
+    }).catch(error => console.error('Error tracking search event:', error));
 
     res.json(repositories);
   }));
@@ -645,6 +717,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const similar = await storage.getSimilarRepositories(repository.id);
+
+    // Track repository analysis event
+    await trackEvent(req, 'repository_analysis', 'analysis', {
+      repositoryId: repository.id,
+      repositoryName: repository.fullName,
+      language: repository.language,
+      stars: repository.stars,
+      success: true,
+    }).catch(error => console.error('Error tracking analysis event:', error));
 
     res.json({
       repository,
