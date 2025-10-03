@@ -7,6 +7,7 @@ import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
+import { createSessionStore, getSessionConfig } from "./sessionStore.js";
 
 if (!process.env.REPLIT_DOMAINS) {
   throw new Error("Environment variable REPLIT_DOMAINS not provided");
@@ -22,7 +23,16 @@ const getOidcConfig = memoize(
   { maxAge: 3600 * 1000 }
 );
 
-export function getSession() {
+export async function getSession() {
+  const useRedis = process.env.USE_REDIS_SESSIONS === 'true';
+  
+  if (useRedis) {
+    // Use Redis session store with encryption
+    const store = await createSessionStore();
+    return session(getSessionConfig(store));
+  }
+  
+  // Fallback to PostgreSQL session store
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({
@@ -68,7 +78,8 @@ async function upsertUser(
 
 export async function setupAuth(app: Express) {
   app.set("trust proxy", 1);
-  app.use(getSession());
+  const sessionMiddleware = await getSession();
+  app.use(sessionMiddleware);
   app.use(passport.initialize());
   app.use(passport.session());
 

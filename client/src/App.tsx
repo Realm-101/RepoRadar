@@ -26,6 +26,7 @@ import Developer from "@/pages/developer";
 import AdvancedAnalytics from "@/pages/advanced-analytics";
 import Integrations from "@/pages/integrations";
 import CodeReview from "@/pages/code-review";
+import AdminDashboard from "@/pages/admin";
 import { AIAssistant } from "@/components/ai-assistant";
 import OnboardingTour from "@/components/onboarding-tour";
 import { SkipLink } from "@/components/skip-link";
@@ -53,6 +54,7 @@ function Router() {
       <Route path="/advanced-analytics" component={AdvancedAnalytics} />
       <Route path="/integrations" component={Integrations} />
       <Route path="/code-review" component={CodeReview} />
+      <Route path="/admin" component={AdminDashboard} />
       
       {/* Home page - shows Landing for unauthenticated, Home for authenticated */}
       {isLoading || !isAuthenticated ? (

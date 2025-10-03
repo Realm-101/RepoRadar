@@ -2,6 +2,10 @@
   "devDependencies": {
     "@axe-core/react": "^4.10.2",
     "axe-core": "^4.10.3",
+    "esbuild": "^0.25.10",
     "vitest-axe": "^0.1.0"
+  },
+  "dependencies": {
+    "recharts": "^3.2.1"
   }
 }
