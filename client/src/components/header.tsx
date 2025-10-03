@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { Notifications } from "@/components/notifications";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { MobileNav } from "@/components/mobile-nav";
 import {
   NavigationMenu,
   NavigationMenuContent,
@@ -49,11 +50,15 @@ export default function Header() {
     : user?.firstName || user?.email?.split('@')[0] || 'User';
 
   return (
-    <header className="bg-card border-b border-border">
-      <div className="max-w-7xl mx-auto px-6 py-4">
+    <header className="bg-card border-b border-border" role="banner">
+      <nav className="max-w-7xl mx-auto px-4 md:px-6 py-4" aria-label="Main navigation">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-8">
-            <Link href="/">
+          {/* Mobile Navigation */}
+          <MobileNav />
+          
+          {/* Desktop Navigation */}
+          <div className="hidden lg:flex items-center space-x-8">
+            <Link href="/" aria-label="RepoAnalyzer home">
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-primary to-secondary flex items-center justify-center">
                   <i className="fas fa-code text-white"></i>
@@ -62,11 +67,11 @@ export default function Header() {
               </div>
             </Link>
             
-            <NavigationMenu>
+            <NavigationMenu className="hidden lg:block">
               <NavigationMenuList>
                 {isAuthenticated && (
                   <NavigationMenuItem>
-                    <Link href="/">
+                    <Link href="/" aria-label="Go to home page">
                       <NavigationMenuLink className="group inline-flex h-10 w-max items-center justify-center rounded-md bg-transparent px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus:outline-none disabled:pointer-events-none disabled:opacity-50 data-[active]:bg-accent/50 data-[state=open]:bg-accent/50">
                         Home
                       </NavigationMenuLink>
@@ -75,8 +80,8 @@ export default function Header() {
                 )}
                 
                 <NavigationMenuItem>
-                  <NavigationMenuTrigger className="hover:bg-accent/50">
-                    <i className="fas fa-compass mr-2"></i>
+                  <NavigationMenuTrigger className="hover:bg-accent/50" aria-label="Discover menu">
+                    <i className="fas fa-compass mr-2" aria-hidden="true"></i>
                     Discover
                   </NavigationMenuTrigger>
                   <NavigationMenuContent>
@@ -115,8 +120,8 @@ export default function Header() {
 
                 {isAuthenticated && (
                   <NavigationMenuItem>
-                    <NavigationMenuTrigger className="hover:bg-accent/50">
-                      <i className="fas fa-briefcase mr-2"></i>
+                    <NavigationMenuTrigger className="hover:bg-accent/50" aria-label="Workspace menu">
+                      <i className="fas fa-briefcase mr-2" aria-hidden="true"></i>
                       Workspace
                     </NavigationMenuTrigger>
                     <NavigationMenuContent>
@@ -175,8 +180,8 @@ export default function Header() {
                 )}
 
                 <NavigationMenuItem>
-                  <NavigationMenuTrigger className="hover:bg-accent/50">
-                    <i className="fas fa-graduation-cap mr-2"></i>
+                  <NavigationMenuTrigger className="hover:bg-accent/50" aria-label="Resources menu">
+                    <i className="fas fa-graduation-cap mr-2" aria-hidden="true"></i>
                     Resources
                   </NavigationMenuTrigger>
                   <NavigationMenuContent>
@@ -216,7 +221,7 @@ export default function Header() {
             </NavigationMenu>
           </div>
 
-          <div className="flex items-center space-x-4">
+          <div className="hidden lg:flex items-center space-x-4">
             <div data-tour="theme-toggle">
               <ThemeToggle />
             </div>
@@ -228,11 +233,11 @@ export default function Header() {
             {isAuthenticated ? (
               <div className="flex items-center space-x-4">
                 <Link href="/profile" data-tour="profile-nav">
-                  <div className="flex items-center space-x-3 hover:bg-gray-800 rounded-lg px-3 py-2 transition-colors">
+                  <div className="flex items-center space-x-3 hover:bg-gray-800 rounded-lg px-3 py-2 transition-colors touch-target">
                     {user?.profileImageUrl ? (
                       <img
                         src={user.profileImageUrl}
-                        alt="Profile"
+                        alt={`${displayName}'s profile picture`}
                         className="w-8 h-8 rounded-lg object-cover"
                         data-testid="img-avatar"
                       />
@@ -250,16 +255,17 @@ export default function Header() {
             ) : (
               <Button
                 onClick={() => window.location.href = '/api/login'}
-                className="bg-gradient-to-r from-primary to-secondary hover:from-secondary hover:to-primary text-white button-hover hover-shine button-scale"
+                className="bg-gradient-to-r from-primary to-secondary hover:from-secondary hover:to-primary text-white button-hover hover-shine button-scale touch-target focus-ring"
                 data-testid="button-login"
                 data-tour="profile-nav"
+                aria-label="Sign in to your account"
               >
                 Sign In
               </Button>
             )}
           </div>
         </div>
-      </div>
+      </nav>
     </header>
   );
 }

@@ -7,7 +7,27 @@ import EnhancedSearch from "@/components/enhanced-search";
 import RepositoryCard from "@/components/repository-card";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { TrendingRepos } from "@/components/trending-repos";
-import { CardSkeleton } from "@/components/skeleton-loader";
+import { CardSkeleton, LoadingSkeleton } from "@/components/skeleton-loader";
+import { ContentTransition } from "@/components/content-transition";
+
+interface RecentAnalysis {
+  id: string;
+  repository: {
+    id: string;
+    name: string;
+    full_name: string;
+    description?: string;
+    language?: string;
+    stargazers_count?: number;
+    forks_count?: number;
+  };
+  originality: number;
+  completeness: number;
+  marketability: number;
+  monetization: number;
+  usefulness: number;
+  overallScore: number;
+}
 
 export default function Home() {
   const { toast } = useToast();
@@ -53,9 +73,9 @@ export default function Home() {
       <EnhancedSearch />
 
       {/* Dashboard Grid */}
-      <section className="py-16 bg-dark">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <main id="main-content" className="py-8 md:py-16 bg-dark" role="main" aria-label="Dashboard">
+        <div className="max-w-7xl mx-auto px-4 md:px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8">
             {/* Trending Repositories - Left Column */}
             <div className="lg:col-span-1">
               <TrendingRepos />
@@ -63,46 +83,49 @@ export default function Home() {
             
             {/* Recent Analyses - Right Column */}
             <div className="lg:col-span-2">
-              <div className="flex items-center justify-between mb-12">
-                <h3 className="text-3xl font-bold">Recent Analysis</h3>
-                <button className="text-primary hover:text-secondary transition-colors font-medium" data-testid="button-view-all">
+              <div className="flex items-center justify-between mb-6 md:mb-12">
+                <h3 className="text-2xl md:text-3xl font-bold">Recent Analysis</h3>
+                <button 
+                  className="text-primary hover:text-secondary transition-colors font-medium text-sm md:text-base touch-target focus-ring" 
+                  data-testid="button-view-all"
+                  aria-label="View all recent analyses"
+                >
                   View All
                 </button>
               </div>
 
-              {loadingAnalyses ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {[...Array(4)].map((_, i) => (
-                    <div key={i} className="bg-card border border-border rounded-xl p-6 animate-pulse">
-                      <div className="h-4 bg-gray-700 rounded mb-4"></div>
-                      <div className="h-3 bg-gray-700 rounded mb-2"></div>
-                      <div className="h-3 bg-gray-700 rounded"></div>
-                    </div>
-                  ))}
-                </div>
-              ) : recentAnalyses && recentAnalyses.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {recentAnalyses.slice(0, 4).map((analysis: any) => (
-                    <RepositoryCard
-                      key={analysis.id}
-                      repository={analysis.repository}
-                      analysis={analysis}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-r from-primary to-secondary flex items-center justify-center mx-auto mb-4">
-                    <i className="fas fa-chart-line text-white text-2xl"></i>
+              <ContentTransition
+                isLoading={loadingAnalyses}
+                skeleton={
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                    <LoadingSkeleton variant="card" count={4} />
                   </div>
-                  <h4 className="text-xl font-semibold mb-2">No Recent Analysis</h4>
-                  <p className="text-gray-400 mb-4">Start analyzing repositories to see them here</p>
-                </div>
-              )}
+                }
+              >
+                {recentAnalyses && recentAnalyses.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                    {(recentAnalyses as RecentAnalysis[]).slice(0, 4).map((analysis) => (
+                      <RepositoryCard
+                        key={analysis.id}
+                        repository={analysis.repository}
+                        analysis={analysis}
+                      />
+                    ))}
+                  </div>
+                  ) : (
+                  <div className="text-center py-8 md:py-12">
+                    <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-gradient-to-r from-primary to-secondary flex items-center justify-center mx-auto mb-4">
+                      <i className="fas fa-chart-line text-white text-xl md:text-2xl"></i>
+                    </div>
+                    <h4 className="text-lg md:text-xl font-semibold mb-2">No Recent Analysis</h4>
+                    <p className="text-sm md:text-base text-gray-400 mb-4">Start analyzing repositories to see them here</p>
+                  </div>
+                )}
+              </ContentTransition>
             </div>
           </div>
         </div>
-      </section>
+      </main>
     </div>
   );
 }

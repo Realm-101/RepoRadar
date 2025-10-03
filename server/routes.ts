@@ -176,7 +176,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
 
   // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+  app.get('/api/auth/user', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -204,32 +204,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  interface AnalysisData {
+    id: string;
+    createdAt: Date;
+    originality: number;
+    completeness: number;
+    marketability: number;
+    monetization: number;
+    usefulness: number;
+    primaryLanguage?: string;
+    repositoryId: string;
+    repositoryName: string;
+    repositoryOwner: string;
+  }
+
   // Analytics Dashboard endpoint
-  app.get('/api/analytics/dashboard', isAuthenticated, async (req: any, res) => {
+  app.get('/api/analytics/dashboard', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const analyses = await storage.getUserAnalyses(userId);
       
       // Calculate statistics
       const now = new Date();
-      const thisMonth = analyses.filter((a: any) => {
+      const thisMonth = (analyses as AnalysisData[]).filter((a) => {
         const date = new Date(a.createdAt);
         return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
       });
       
-      const lastMonth = analyses.filter((a: any) => {
+      const lastMonth = (analyses as AnalysisData[]).filter((a) => {
         const date = new Date(a.createdAt);
         const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         return date.getMonth() === lastMonthDate.getMonth() && date.getFullYear() === lastMonthDate.getFullYear();
       });
       
       const avgScore = analyses.length > 0 
-        ? analyses.reduce((sum: number, a: any) => sum + ((a.originality + a.completeness + a.marketability + a.monetization + a.usefulness) / 5), 0) / analyses.length
+        ? (analyses as AnalysisData[]).reduce((sum, a) => sum + ((a.originality + a.completeness + a.marketability + a.monetization + a.usefulness) / 5), 0) / analyses.length
         : 0;
       
       // Language distribution
       const languageCounts: Record<string, number> = {};
-      analyses.forEach((a: any) => {
+      (analyses as AnalysisData[]).forEach((a) => {
         if (a.primaryLanguage) {
           languageCounts[a.primaryLanguage] = (languageCounts[a.primaryLanguage] || 0) + 1;
         }
@@ -242,7 +256,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const date = new Date();
         date.setDate(date.getDate() - i);
         const dateStr = date.toISOString().split('T')[0];
-        const count = analyses.filter((a: any) => 
+        const count = (analyses as AnalysisData[]).filter((a) => 
           new Date(a.createdAt).toISOString().split('T')[0] === dateStr
         ).length;
         activity.push({ date: dateStr, count });
@@ -250,11 +264,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Score averages
       const scores = [
-        { name: 'Originality', score: analyses.length > 0 ? analyses.reduce((sum: number, a: any) => sum + a.originality, 0) / analyses.length : 0 },
-        { name: 'Completeness', score: analyses.length > 0 ? analyses.reduce((sum: number, a: any) => sum + a.completeness, 0) / analyses.length : 0 },
-        { name: 'Marketability', score: analyses.length > 0 ? analyses.reduce((sum: number, a: any) => sum + a.marketability, 0) / analyses.length : 0 },
-        { name: 'Monetization', score: analyses.length > 0 ? analyses.reduce((sum: number, a: any) => sum + a.monetization, 0) / analyses.length : 0 },
-        { name: 'Usefulness', score: analyses.length > 0 ? analyses.reduce((sum: number, a: any) => sum + a.usefulness, 0) / analyses.length : 0 },
+        { name: 'Originality', score: analyses.length > 0 ? (analyses as AnalysisData[]).reduce((sum, a) => sum + a.originality, 0) / analyses.length : 0 },
+        { name: 'Completeness', score: analyses.length > 0 ? (analyses as AnalysisData[]).reduce((sum, a) => sum + a.completeness, 0) / analyses.length : 0 },
+        { name: 'Marketability', score: analyses.length > 0 ? (analyses as AnalysisData[]).reduce((sum, a) => sum + a.marketability, 0) / analyses.length : 0 },
+        { name: 'Monetization', score: analyses.length > 0 ? (analyses as AnalysisData[]).reduce((sum, a) => sum + a.monetization, 0) / analyses.length : 0 },
+        { name: 'Usefulness', score: analyses.length > 0 ? (analyses as AnalysisData[]).reduce((sum, a) => sum + a.usefulness, 0) / analyses.length : 0 },
       ];
       
       // Monthly trends (last 6 months)
@@ -263,18 +277,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const date = new Date();
         date.setMonth(date.getMonth() - i);
         const monthStr = date.toLocaleDateString('en', { month: 'short' });
-        const monthAnalyses = analyses.filter((a: any) => {
+        const monthAnalyses = (analyses as AnalysisData[]).filter((a) => {
           const aDate = new Date(a.createdAt);
           return aDate.getMonth() === date.getMonth() && aDate.getFullYear() === date.getFullYear();
         });
         
         trends.push({
           month: monthStr,
-          originality: monthAnalyses.length > 0 ? monthAnalyses.reduce((sum: number, a: any) => sum + a.originality, 0) / monthAnalyses.length : 0,
-          completeness: monthAnalyses.length > 0 ? monthAnalyses.reduce((sum: number, a: any) => sum + a.completeness, 0) / monthAnalyses.length : 0,
-          marketability: monthAnalyses.length > 0 ? monthAnalyses.reduce((sum: number, a: any) => sum + a.marketability, 0) / monthAnalyses.length : 0,
-          monetization: monthAnalyses.length > 0 ? monthAnalyses.reduce((sum: number, a: any) => sum + a.monetization, 0) / monthAnalyses.length : 0,
-          usefulness: monthAnalyses.length > 0 ? monthAnalyses.reduce((sum: number, a: any) => sum + a.usefulness, 0) / monthAnalyses.length : 0,
+          originality: monthAnalyses.length > 0 ? monthAnalyses.reduce((sum, a) => sum + a.originality, 0) / monthAnalyses.length : 0,
+          completeness: monthAnalyses.length > 0 ? monthAnalyses.reduce((sum, a) => sum + a.completeness, 0) / monthAnalyses.length : 0,
+          marketability: monthAnalyses.length > 0 ? monthAnalyses.reduce((sum, a) => sum + a.marketability, 0) / monthAnalyses.length : 0,
+          monetization: monthAnalyses.length > 0 ? monthAnalyses.reduce((sum, a) => sum + a.monetization, 0) / monthAnalyses.length : 0,
+          usefulness: monthAnalyses.length > 0 ? monthAnalyses.reduce((sum, a) => sum + a.usefulness, 0) / monthAnalyses.length : 0,
         });
       }
       
@@ -283,7 +297,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         { 
           title: 'Best Performing', 
           description: 'Your highest-scoring repository', 
-          value: analyses.length > 0 ? Math.max(...analyses.map((a: any) => (a.originality + a.completeness + a.marketability + a.monetization + a.usefulness) / 5)).toFixed(1) : '0',
+          value: analyses.length > 0 ? Math.max(...(analyses as AnalysisData[]).map((a) => (a.originality + a.completeness + a.marketability + a.monetization + a.usefulness) / 5)).toFixed(1) : '0',
           unit: 'score'
         },
         { 
@@ -307,14 +321,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           growth: lastMonth.length > 0 ? Math.round(((thisMonth.length - lastMonth.length) / lastMonth.length) * 100) : 0,
           avgScore,
           topLanguage: languages.length > 0 ? languages.sort((a, b) => b.value - a.value)[0].name : 'N/A',
-          activeProjects: new Set(analyses.map((a: any) => a.repositoryId)).size
+          activeProjects: new Set((analyses as AnalysisData[]).map((a) => a.repositoryId)).size
         },
         activity,
         languages,
         scores,
         trends,
         performance,
-        recentAnalyses: analyses.slice(0, 10).map((a: any) => ({
+        recentAnalyses: (analyses as AnalysisData[]).slice(0, 10).map((a) => ({
           id: a.id,
           name: a.repositoryName,
           owner: a.repositoryOwner,
@@ -330,7 +344,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Stripe subscription endpoint
-  app.post('/api/create-subscription', isAuthenticated, async (req: any, res) => {
+  app.post('/api/create-subscription', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       // Check if Stripe is enabled
       if (!isStripeEnabled()) {
@@ -365,12 +379,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         stripeSubscriptionId: subscription.id,
         subscriptionTier: plan,
         subscriptionStatus: subscription.status,
-        subscriptionEndDate: (subscription as any).current_period_end ? new Date((subscription as any).current_period_end * 1000) : null,
+        subscriptionEndDate: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
       });
 
       // Return client secret for payment
-      const invoice = subscription.latest_invoice as any;
-      const paymentIntent = invoice?.payment_intent as any;
+      const invoice = subscription.latest_invoice as Stripe.Invoice | null;
+      const paymentIntent = invoice?.payment_intent as Stripe.PaymentIntent | null;
 
       res.json({
         subscriptionId: subscription.id,
@@ -399,9 +413,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     try {
       event = stripe.webhooks.constructEvent(req.body, sig!, process.env.STRIPE_WEBHOOK_SECRET);
-    } catch (err: any) {
-      console.error('Webhook signature verification failed:', err.message);
-      return res.status(400).send(`Webhook Error: ${err.message}`);
+    } catch (err) {
+      const error = err as { message: string };
+      console.error('Webhook signature verification failed:', error.message);
+      return res.status(400).send(`Webhook Error: ${error.message}`);
     }
 
     // Handle the event
@@ -417,7 +432,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (user) {
             await storage.updateUserSubscription(user.id, {
               subscriptionStatus: subscription.status,
-              subscriptionEndDate: (subscription as any).current_period_end ? new Date((subscription as any).current_period_end * 1000) : null,
+              subscriptionEndDate: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
             });
           }
         } catch (error) {
@@ -444,118 +459,136 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Repository search and analysis
   app.get('/api/repositories/search', searchRateLimit, validateQuery(searchRepositoriesSchema), asyncHandler(async (req, res) => {
-    try {
-      const { q: query, limit = 10 } = req.query;
-      
-      if (!query || typeof query !== 'string') {
-        return res.status(400).json({ message: "Query parameter 'q' is required" });
-      }
-
-      // First try to search in our database
-      const localResults = await storage.searchRepositories(query, Number(limit));
-      
-      // If we have enough local results, return them
-      if (localResults.length >= Number(limit)) {
-        return res.json(localResults);
-      }
-
-      // Otherwise, search GitHub
-      const githubResults = await githubService.searchRepositories(query, 'stars', Number(limit));
-      
-      // Store new repositories in our database
-      const repositories = [];
-      for (const ghRepo of githubResults) {
-        try {
-          const languages = await githubService.getRepositoryLanguages(ghRepo.owner.login, ghRepo.name);
-          
-          const repoData = {
-            id: ghRepo.id.toString(),
-            name: ghRepo.name,
-            fullName: ghRepo.full_name,
-            owner: ghRepo.owner.login,
-            description: ghRepo.description,
-            language: ghRepo.language,
-            stars: ghRepo.stargazers_count,
-            forks: ghRepo.forks_count,
-            watchers: ghRepo.watchers_count,
-            size: ghRepo.size,
-            isPrivate: ghRepo.private,
-            htmlUrl: ghRepo.html_url,
-            cloneUrl: ghRepo.clone_url,
-            languages,
-            topics: ghRepo.topics || [],
-          };
-          
-          const repository = await storage.upsertRepository(repoData);
-          repositories.push(repository);
-        } catch (error) {
-          console.error(`Error storing repository ${ghRepo.full_name}:`, error);
-        }
-      }
-
-      res.json(repositories);
-    } catch (error) {
-      console.error("Error searching repositories:", error);
-      res.status(500).json({ message: "Failed to search repositories" });
+    const { q: query, limit = 10 } = req.query;
+    
+    if (!query || typeof query !== 'string') {
+      return res.status(400).json({ message: "Query parameter 'q' is required" });
     }
-  });
+
+    // First try to search in our database
+    const localResults = await storage.searchRepositories(query, Number(limit));
+    
+    // If we have enough local results, return them
+    if (localResults.length >= Number(limit)) {
+      return res.json(localResults);
+    }
+
+    // Otherwise, search GitHub
+    const githubResults = await githubService.searchRepositories(query, 'stars', Number(limit));
+    
+    // Store new repositories in our database
+    const repositories = [];
+    for (const ghRepo of githubResults) {
+      try {
+        const languages = await githubService.getRepositoryLanguages(ghRepo.owner.login, ghRepo.name);
+        
+        const repoData = {
+          id: ghRepo.id.toString(),
+          name: ghRepo.name,
+          fullName: ghRepo.full_name,
+          owner: ghRepo.owner.login,
+          description: ghRepo.description,
+          language: ghRepo.language,
+          stars: ghRepo.stargazers_count,
+          forks: ghRepo.forks_count,
+          watchers: ghRepo.watchers_count,
+          size: ghRepo.size,
+          isPrivate: ghRepo.private,
+          htmlUrl: ghRepo.html_url,
+          cloneUrl: ghRepo.clone_url,
+          languages,
+          topics: ghRepo.topics || [],
+        };
+        
+        const repository = await storage.upsertRepository(repoData);
+        repositories.push(repository);
+      } catch (error) {
+        console.error(`Error storing repository ${ghRepo.full_name}:`, error);
+      }
+    }
+
+    res.json(repositories);
+  }));
 
   app.post('/api/repositories/analyze', analysisRateLimit, validateBody(analyzeRepositorySchema), asyncHandler(async (req, res) => {
+    const { url } = req.body;
+    
+    if (!url) {
+      return res.status(400).json({ message: "Repository URL is required" });
+    }
+
+    const parsed = githubService.parseRepositoryUrl(url);
+    if (!parsed) {
+      return res.status(400).json({ message: "Invalid GitHub repository URL" });
+    }
+
+    const { owner, repo } = parsed;
+    
+    // Get repository details from GitHub
+    const repoDetails = await githubService.getRepositoryWithDetails(owner, repo);
+    if (!repoDetails) {
+      return res.status(404).json({ message: "Repository not found" });
+    }
+    const { repository: ghRepo, languages, readme } = repoDetails;
+    
+    // Store repository in database
+    const repoData = {
+      id: ghRepo.id.toString(),
+      name: ghRepo.name,
+      fullName: ghRepo.full_name,
+      owner: ghRepo.owner.login,
+      description: ghRepo.description,
+      language: ghRepo.language,
+      stars: ghRepo.stargazers_count,
+      forks: ghRepo.forks_count,
+      watchers: ghRepo.watchers_count,
+      size: ghRepo.size,
+      isPrivate: ghRepo.private,
+      htmlUrl: ghRepo.html_url,
+      cloneUrl: ghRepo.clone_url,
+      languages,
+      topics: ghRepo.topics || [],
+      lastAnalyzed: new Date(),
+    };
+    
+    const repository = await storage.upsertRepository(repoData);
+
+    // Check if analysis already exists
+    const existingAnalysis = await storage.getAnalysis(repository.id);
+    if (existingAnalysis) {
+      return res.json({
+        repository,
+        analysis: existingAnalysis,
+        similar: await storage.getSimilarRepositories(repository.id)
+      });
+    }
+
+    // Analyze with Gemini
+    const analysisResult = await analyzeRepository({
+      name: ghRepo.name,
+      description: ghRepo.description || '',
+      language: ghRepo.language || 'Unknown',
+      stars: ghRepo.stargazers_count,
+      forks: ghRepo.forks_count,
+      size: ghRepo.size,
+      languages,
+      topics: ghRepo.topics || [],
+      readme: readme || undefined,
+    });
+
+    // Store analysis
+    const analysisData = {
+      repositoryId: repository.id,
+      userId: (req as AuthenticatedRequest).user?.claims?.sub,
+      ...analysisResult,
+    };
+    
+    const validatedAnalysisData = insertAnalysisSchema.parse(analysisData);
+    const analysis = await storage.createAnalysis(validatedAnalysisData);
+
+    // Find and store similar repositories
     try {
-      const { url } = req.body;
-      
-      if (!url) {
-        return res.status(400).json({ message: "Repository URL is required" });
-      }
-
-      const parsed = githubService.parseRepositoryUrl(url);
-      if (!parsed) {
-        return res.status(400).json({ message: "Invalid GitHub repository URL" });
-      }
-
-      const { owner, repo } = parsed;
-      
-      // Get repository details from GitHub
-      const repoDetails = await githubService.getRepositoryWithDetails(owner, repo);
-      if (!repoDetails) {
-        return res.status(404).json({ message: "Repository not found" });
-      }
-      const { repository: ghRepo, languages, readme } = repoDetails;
-      
-      // Store repository in database
-      const repoData = {
-        id: ghRepo.id.toString(),
-        name: ghRepo.name,
-        fullName: ghRepo.full_name,
-        owner: ghRepo.owner.login,
-        description: ghRepo.description,
-        language: ghRepo.language,
-        stars: ghRepo.stargazers_count,
-        forks: ghRepo.forks_count,
-        watchers: ghRepo.watchers_count,
-        size: ghRepo.size,
-        isPrivate: ghRepo.private,
-        htmlUrl: ghRepo.html_url,
-        cloneUrl: ghRepo.clone_url,
-        languages,
-        topics: ghRepo.topics || [],
-        lastAnalyzed: new Date(),
-      };
-      
-      const repository = await storage.upsertRepository(repoData);
-
-      // Check if analysis already exists
-      const existingAnalysis = await storage.getAnalysis(repository.id);
-      if (existingAnalysis) {
-        return res.json({
-          repository,
-          analysis: existingAnalysis,
-          similar: await storage.getSimilarRepositories(repository.id)
-        });
-      }
-
-      // Analyze with Gemini
-      const analysisResult = await analyzeRepository({
+      const similarRepoNames = await findSimilarRepositories({
         name: ghRepo.name,
         description: ghRepo.description || '',
         language: ghRepo.language || 'Unknown',
@@ -564,92 +597,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
         size: ghRepo.size,
         languages,
         topics: ghRepo.topics || [],
-        readme: readme || undefined,
       });
 
-      // Store analysis
-      const analysisData = {
-        repositoryId: repository.id,
-        userId: (req as any).user?.claims?.sub,
-        ...analysisResult,
-      };
-      
-      const validatedAnalysisData = insertAnalysisSchema.parse(analysisData);
-      const analysis = await storage.createAnalysis(validatedAnalysisData);
-
-      // Find and store similar repositories
-      try {
-        const similarRepoNames = await findSimilarRepositories({
-          name: ghRepo.name,
-          description: ghRepo.description || '',
-          language: ghRepo.language || 'Unknown',
-          stars: ghRepo.stargazers_count,
-          forks: ghRepo.forks_count,
-          size: ghRepo.size,
-          languages,
-          topics: ghRepo.topics || [],
-        });
-
-        const similarRepos = [];
-        for (const repoName of similarRepoNames) {
-          try {
-            const parsed = githubService.parseRepositoryUrl(repoName);
-            if (parsed) {
-              const similarRepoDetails = await githubService.getRepositoryWithDetails(parsed.owner, parsed.repo);
-              if (!similarRepoDetails) continue;
-              const { repository: similarGhRepo, languages: similarLanguages } = similarRepoDetails;
-              
-              const similarRepoData = {
-                id: similarGhRepo.id.toString(),
-                name: similarGhRepo.name,
-                fullName: similarGhRepo.full_name,
-                owner: similarGhRepo.owner.login,
-                description: similarGhRepo.description,
-                language: similarGhRepo.language,
-                stars: similarGhRepo.stargazers_count,
-                forks: similarGhRepo.forks_count,
-                watchers: similarGhRepo.watchers_count,
-                size: similarGhRepo.size,
-                isPrivate: similarGhRepo.private,
-                htmlUrl: similarGhRepo.html_url,
-                cloneUrl: similarGhRepo.clone_url,
-                languages: similarLanguages,
-                topics: similarGhRepo.topics || [],
-              };
-              
-              const similarRepo = await storage.upsertRepository(similarRepoData);
-              similarRepos.push({
-                repositoryId: similarRepo.id,
-                similarity: 0.8 // Default similarity score
-              });
-            }
-          } catch (error) {
-            console.error(`Error fetching similar repo ${repoName}:`, error);
+      const similarRepos = [];
+      for (const repoName of similarRepoNames) {
+        try {
+          const parsed = githubService.parseRepositoryUrl(repoName);
+          if (parsed) {
+            const similarRepoDetails = await githubService.getRepositoryWithDetails(parsed.owner, parsed.repo);
+            if (!similarRepoDetails) continue;
+            const { repository: similarGhRepo, languages: similarLanguages } = similarRepoDetails;
+            
+            const similarRepoData = {
+              id: similarGhRepo.id.toString(),
+              name: similarGhRepo.name,
+              fullName: similarGhRepo.full_name,
+              owner: similarGhRepo.owner.login,
+              description: similarGhRepo.description,
+              language: similarGhRepo.language,
+              stars: similarGhRepo.stargazers_count,
+              forks: similarGhRepo.forks_count,
+              watchers: similarGhRepo.watchers_count,
+              size: similarGhRepo.size,
+              isPrivate: similarGhRepo.private,
+              htmlUrl: similarGhRepo.html_url,
+              cloneUrl: similarGhRepo.clone_url,
+              languages: similarLanguages,
+              topics: similarGhRepo.topics || [],
+            };
+            
+            const similarRepo = await storage.upsertRepository(similarRepoData);
+            similarRepos.push({
+              repositoryId: similarRepo.id,
+              similarity: 0.8 // Default similarity score
+            });
           }
+        } catch (error) {
+          console.error(`Error fetching similar repo ${repoName}:`, error);
         }
-
-        if (similarRepos.length > 0) {
-          await storage.createSimilarRepositories(repository.id, similarRepos);
-        }
-      } catch (error) {
-        console.error("Error finding similar repositories:", error);
       }
 
-      const similar = await storage.getSimilarRepositories(repository.id);
-
-      res.json({
-        repository,
-        analysis,
-        similar
-      });
+      if (similarRepos.length > 0) {
+        await storage.createSimilarRepositories(repository.id, similarRepos);
+      }
     } catch (error) {
-      console.error("Error analyzing repository:", error);
-      res.status(500).json({ message: "Failed to analyze repository" });
+      console.error("Error finding similar repositories:", error);
     }
-  });
+
+    const similar = await storage.getSimilarRepositories(repository.id);
+
+    res.json({
+      repository,
+      analysis,
+      similar
+    });
+  }));
 
   // Recent repositories (must be before :id route)
-  app.get('/api/repositories/recent', repositoryPagination, async (req: any, res: any) => {
+  app.get('/api/repositories/recent', repositoryPagination, async (req: Request & { pagination: { limit: number; offset: number } }, res: Response & { paginate: (data: unknown[], total: number) => unknown }) => {
     try {
       const { limit, offset } = req.pagination;
       
@@ -728,11 +733,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Add filters to search params
+      const searchParamsWithFilters = searchParams as typeof searchParams & { minStars?: number; maxAge?: string };
       if (minStars !== undefined) {
-        (searchParams as any).minStars = minStars;
+        searchParamsWithFilters.minStars = minStars;
       }
       if (maxAge && maxAge !== 'any') {
-        (searchParams as any).maxAge = maxAge;
+        searchParamsWithFilters.maxAge = maxAge;
       }
       
       // Use enhanced AI search
@@ -757,7 +763,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           if (maxAge && maxAge !== 'any') {
-            const createdDate = new Date((ghRepo as any).created_at);
+            const ghRepoWithDates = ghRepo as typeof ghRepo & { created_at: string };
+            const createdDate = new Date(ghRepoWithDates.created_at);
             const now = new Date();
             const ageMap: { [key: string]: number } = {
               '1month': 30,
@@ -791,8 +798,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             cloneUrl: ghRepo.clone_url,
             languages,
             topics: ghRepo.topics || [],
-            createdAt: (ghRepo as any).created_at,
-            updatedAt: (ghRepo as any).updated_at
+            createdAt: (ghRepo as typeof ghRepo & { created_at: string; updated_at: string }).created_at,
+            updatedAt: (ghRepo as typeof ghRepo & { created_at: string; updated_at: string }).updated_at
           };
           
           const savedRepo = await storage.upsertRepository(repoData);
@@ -836,8 +843,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const similar = await storage.getSimilarRepositories(id);
       
       let isSaved = false;
-      if ((req as any).user?.claims?.sub) {
-        isSaved = await storage.isRepositorySaved((req as any).user.claims.sub, id);
+      const authenticatedReq = req as Partial<AuthenticatedRequest>;
+      if (authenticatedReq.user?.claims?.sub) {
+        isSaved = await storage.isRepositorySaved(authenticatedReq.user.claims.sub, id);
       }
 
       res.json({
@@ -853,7 +861,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Recent analyses
-  app.get('/api/analyses/recent', analysisPagination, async (req: any, res: any) => {
+  app.get('/api/analyses/recent', analysisPagination, async (req: Request & { pagination: { limit: number; offset: number } }, res: Response & { paginate: (data: unknown[], total: number) => unknown }) => {
     try {
       const { limit, offset } = req.pagination;
       
@@ -873,7 +881,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Saved repositories (protected routes)
-  app.post('/api/saved-repositories', isAuthenticated, async (req: any, res) => {
+  app.post('/api/saved-repositories', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const { repositoryId } = req.body;
@@ -893,7 +901,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/saved-repositories/:repositoryId', isAuthenticated, async (req: any, res) => {
+  app.delete('/api/saved-repositories/:repositoryId', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const { repositoryId } = req.params;
@@ -906,7 +914,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/saved-repositories', isAuthenticated, repositoryPagination, async (req: any, res: any) => {
+  app.get('/api/saved-repositories', isAuthenticated, repositoryPagination, async (req: AuthenticatedRequest & { pagination: { limit: number; offset: number } }, res: Response & { paginate: (data: unknown[], total: number) => unknown }) => {
     try {
       const userId = req.user.claims.sub;
       const { limit, offset } = req.pagination;
@@ -927,7 +935,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // User Profile & Preferences Routes (Protected - Pro/Enterprise only)
-  app.get('/api/user/preferences', isAuthenticated, async (req: any, res) => {
+  app.get('/api/user/preferences', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -938,12 +946,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const preferences = await storage.getUserPreferences(userId);
       res.json(preferences);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      const err = error as { message: string };
+      res.status(500).json({ message: err.message });
     }
   });
 
-  app.put('/api/user/preferences', isAuthenticated, async (req: any, res) => {
+  app.put('/api/user/preferences', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -954,13 +963,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const preferences = await storage.updateUserPreferences(userId, req.body);
       res.json(preferences);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      const err = error as { message: string };
+      res.status(500).json({ message: err.message });
     }
   });
 
   // Bookmarks Routes
-  app.get('/api/user/bookmarks', isAuthenticated, async (req: any, res) => {
+  app.get('/api/user/bookmarks', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -971,12 +981,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const bookmarks = await storage.getUserBookmarks(userId);
       res.json(bookmarks);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      const err = error as { message: string };
+      res.status(500).json({ message: err.message });
     }
   });
 
-  app.post('/api/user/bookmarks', isAuthenticated, async (req: any, res) => {
+  app.post('/api/user/bookmarks', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -992,12 +1003,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.trackActivity(userId, 'bookmarked', repositoryId);
       
       res.json(bookmark);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      const err = error as { message: string };
+      res.status(500).json({ message: err.message });
     }
   });
 
-  app.delete('/api/user/bookmarks/:repositoryId', isAuthenticated, async (req: any, res) => {
+  app.delete('/api/user/bookmarks/:repositoryId', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -1008,13 +1020,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await storage.removeBookmark(userId, req.params.repositoryId);
       res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      const err = error as { message: string };
+      res.status(500).json({ message: err.message });
     }
   });
 
   // Tags Routes
-  app.get('/api/user/tags', isAuthenticated, async (req: any, res) => {
+  app.get('/api/user/tags', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -1025,12 +1038,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const tags = await storage.getUserTags(userId);
       res.json(tags);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      const err = error as { message: string };
+      res.status(500).json({ message: err.message });
     }
   });
 
-  app.post('/api/user/tags', isAuthenticated, async (req: any, res) => {
+  app.post('/api/user/tags', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -1042,12 +1056,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { name, color } = req.body;
       const tag = await storage.createTag(userId, name, color);
       res.json(tag);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      const err = error as { message: string };
+      res.status(500).json({ message: err.message });
     }
   });
 
-  app.post('/api/repositories/:repositoryId/tags', isAuthenticated, async (req: any, res) => {
+  app.post('/api/repositories/:repositoryId/tags', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);

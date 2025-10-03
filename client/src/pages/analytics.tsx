@@ -2,7 +2,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { SkeletonLoader } from "@/components/skeleton-loader";
+import { LoadingSkeleton, CardSkeleton } from "@/components/skeleton-loader";
 import { Link } from "wouter";
 import {
   LineChart,
@@ -79,7 +79,24 @@ export default function Analytics() {
     return (
       <div className="min-h-screen bg-background py-12">
         <div className="max-w-7xl mx-auto px-6">
-          <SkeletonLoader />
+          {/* Header Skeleton */}
+          <div className="mb-8">
+            <div className="h-10 w-64 bg-gray-700 rounded animate-pulse mb-4"></div>
+            <div className="h-4 w-96 bg-gray-700 rounded animate-pulse"></div>
+          </div>
+          
+          {/* Stats Grid Skeleton */}
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+            <LoadingSkeleton variant="card" count={6} />
+          </div>
+          
+          {/* Charts Grid Skeleton */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <LoadingSkeleton variant="chart" count={4} />
+          </div>
+          
+          {/* Table Skeleton */}
+          <LoadingSkeleton variant="table" count={5} />
         </div>
       </div>
     );

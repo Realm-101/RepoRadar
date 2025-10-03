@@ -1,4 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
+import { AppError, ErrorCodes } from '@shared/errors';
+import { retryHandler } from './utils/retryHandler';
 
 const GEMINI_ENABLED = !!process.env.GEMINI_API_KEY;
 
@@ -11,6 +13,67 @@ const ai = GEMINI_ENABLED
   : null;
 
 export const isGeminiEnabled = () => GEMINI_ENABLED;
+
+/**
+ * Handle Gemini API errors and convert to AppError
+ */
+function handleGeminiError(error: unknown, context: string): never {
+  console.error(`Gemini API error during ${context}:`, error);
+  const err = error as { message?: string; status?: number; code?: string };
+
+  // Rate limit error
+  if (err.message?.includes('rate limit') || err.status === 429) {
+    throw new AppError(
+      ErrorCodes.RATE_LIMIT_EXCEEDED.code,
+      `Gemini API rate limit exceeded during ${context}`,
+      'AI service rate limit exceeded. Please try again in a moment.',
+      ErrorCodes.RATE_LIMIT_EXCEEDED.statusCode,
+      'Wait a moment and try again'
+    );
+  }
+
+  // API key error
+  if (err.message?.includes('API key') || err.status === 401) {
+    throw new AppError(
+      ErrorCodes.UNAUTHORIZED.code,
+      `Gemini API authentication failed during ${context}`,
+      'AI service authentication failed.',
+      ErrorCodes.UNAUTHORIZED.statusCode,
+      'Contact support if this persists'
+    );
+  }
+
+  // Timeout error
+  if (err.message?.includes('timeout') || err.code === 'ETIMEDOUT') {
+    throw new AppError(
+      ErrorCodes.TIMEOUT_ERROR.code,
+      `Gemini API timeout during ${context}`,
+      ErrorCodes.TIMEOUT_ERROR.userMessage,
+      ErrorCodes.TIMEOUT_ERROR.statusCode,
+      ErrorCodes.TIMEOUT_ERROR.recoveryAction
+    );
+  }
+
+  // Service unavailable
+  if (err.status && err.status >= 500) {
+    throw new AppError(
+      ErrorCodes.EXTERNAL_API_ERROR.code,
+      `Gemini API service error during ${context}`,
+      'AI service is temporarily unavailable.',
+      ErrorCodes.EXTERNAL_API_ERROR.statusCode,
+      'Please try again in a few moments'
+    );
+  }
+
+  // Generic AI error
+  throw new AppError(
+    ErrorCodes.ANALYSIS_FAILED.code,
+    `AI analysis failed during ${context}: ${err.message || 'Unknown error'}`,
+    ErrorCodes.ANALYSIS_FAILED.userMessage,
+    ErrorCodes.ANALYSIS_FAILED.statusCode,
+    ErrorCodes.ANALYSIS_FAILED.recoveryAction
+  );
+}
 
 export interface RepositoryAnalysisInput {
   name: string;
@@ -54,13 +117,55 @@ export interface RepositoryAnalysisResult {
   };
 }
 
+interface UserPreferences {
+  preferredLanguages?: string[];
+  preferredTopics?: string[];
+  excludedTopics?: string[];
+  minStars?: number;
+  maxAge?: string;
+}
+
+interface UserActivity {
+  action: string;
+  repositoryId?: string;
+}
+
+interface AIRecommendation {
+  name: string;
+  reason: string;
+  matchScore: number;
+  primaryLanguage: string;
+  topics: string[];
+  stars: number;
+  description: string;
+}
+
+interface AIRecommendationsResult {
+  recommendations: AIRecommendation[];
+  insights: {
+    topInterests: string[];
+    suggestedTopics: string[];
+    recommendationRationale: string;
+  };
+}
+
 export async function generateAIRecommendations(
-  userId: string, 
-  preferences: any, 
-  recentActivity: any[]
-): Promise<any> {
+  preferences: UserPreferences, 
+  recentActivity: UserActivity[]
+): Promise<AIRecommendationsResult> {
+  if (!isGeminiEnabled() || !ai) {
+    throw new AppError(
+      ErrorCodes.EXTERNAL_API_ERROR.code,
+      'Gemini API not configured',
+      'AI recommendations are currently unavailable.',
+      ErrorCodes.EXTERNAL_API_ERROR.statusCode,
+      'Contact support or try again later'
+    );
+  }
+
   try {
-    const prompt = `You are an expert GitHub repository recommendation system. Based on the user's preferences and recent activity, generate personalized repository recommendations.
+    return await retryHandler.executeWithRetry(async () => {
+      const prompt = `You are an expert GitHub repository recommendation system. Based on the user's preferences and recent activity, generate personalized repository recommendations.
 
 User Preferences:
 - Preferred Languages: ${preferences?.preferredLanguages?.join(', ') || 'Any'}
@@ -98,29 +203,46 @@ Return a JSON object with this structure:
   }
 }`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-pro",
-      config: {
-        responseMimeType: "application/json",
-      },
-      contents: prompt,
-    });
+      const response = await ai!.models.generateContent({
+        model: "gemini-2.5-pro",
+        config: {
+          responseMimeType: "application/json",
+        },
+        contents: prompt,
+      });
 
-    const result = response.text;
-    return result ? JSON.parse(result) : { recommendations: [], insights: {} };
+      const result = response.text;
+      return result ? JSON.parse(result) : { recommendations: [], insights: {} };
+    }, {
+      maxAttempts: 3,
+      backoff: 'exponential',
+      initialDelay: 1000,
+      onRetry: (attempt, error) => {
+        console.log(`Retrying AI recommendations (attempt ${attempt}):`, error.message);
+      }
+    });
   } catch (error) {
-    console.error("Error generating AI recommendations:", error);
-    return { recommendations: [], insights: {} };
+    if (error instanceof AppError) {
+      throw error;
+    }
+    handleGeminiError(error, 'AI recommendations generation');
   }
 }
 
 export async function askAI(question: string): Promise<string> {
   if (!isGeminiEnabled() || !ai) {
-    return "AI assistant is currently unavailable. Please try again later.";
+    throw new AppError(
+      ErrorCodes.EXTERNAL_API_ERROR.code,
+      'Gemini API not configured',
+      'AI assistant is currently unavailable.',
+      ErrorCodes.EXTERNAL_API_ERROR.statusCode,
+      'Contact support or try again later'
+    );
   }
 
   try {
-    const systemPrompt = `You are an AI assistant for RepoAnalyzer, a GitHub repository analysis platform.
+    return await retryHandler.executeWithRetry(async () => {
+      const systemPrompt = `You are an AI assistant for RepoAnalyzer, a GitHub repository analysis platform.
     
 RepoAnalyzer Features:
 - Analyzes GitHub repositories using 5 metrics: originality, completeness, marketability, monetization potential, and usefulness
@@ -159,18 +281,28 @@ Instructions:
 - Be friendly and professional
 - Keep answers focused and actionable`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-pro",
-      config: {
-        systemInstruction: systemPrompt,
-      },
-      contents: question,
-    });
+      const response = await ai!.models.generateContent({
+        model: "gemini-2.5-pro",
+        config: {
+          systemInstruction: systemPrompt,
+        },
+        contents: question,
+      });
 
-    return response.text || "I apologize, but I couldn't generate a response. Please try again.";
+      return response.text || "I apologize, but I couldn't generate a response. Please try again.";
+    }, {
+      maxAttempts: 2, // Fewer retries for interactive chat
+      backoff: 'exponential',
+      initialDelay: 500,
+      onRetry: (attempt, error) => {
+        console.log(`Retrying AI assistant (attempt ${attempt}):`, error.message);
+      }
+    });
   } catch (error) {
-    console.error("AI Assistant error:", error);
-    return "I'm having trouble processing your question right now. Please try again later.";
+    if (error instanceof AppError) {
+      throw error;
+    }
+    handleGeminiError(error, 'AI assistant');
   }
 }
 
@@ -181,7 +313,8 @@ export async function analyzeRepository(repo: RepositoryAnalysisInput): Promise<
   }
 
   try {
-    const systemPrompt = `You are an expert software repository analyst. Analyze the given repository and provide a comprehensive evaluation with detailed reasoning.
+    return await retryHandler.executeWithRetry(async () => {
+      const systemPrompt = `You are an expert software repository analyst. Analyze the given repository and provide a comprehensive evaluation with detailed reasoning.
 
 Rate each aspect from 1-10 and provide detailed insights:
 1. Originality: How unique and innovative is this project? Consider novelty of approach, creative problem-solving, and differentiation from existing solutions.
@@ -234,7 +367,7 @@ Respond with valid JSON in this exact format:
   }
 }`;
 
-    const repoInfo = `
+      const repoInfo = `
 Repository: ${repo.name}
 Description: ${repo.description}
 Primary Language: ${repo.language}
@@ -246,102 +379,105 @@ Topics: ${repo.topics.join(', ')}
 ${repo.readme ? `README Preview: ${repo.readme.substring(0, 2000)}...` : 'No README available'}
 `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-pro",
-      config: {
-        systemInstruction: systemPrompt,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "object",
-          properties: {
-            originality: { type: "number" },
-            completeness: { type: "number" },
-            marketability: { type: "number" },
-            monetization: { type: "number" },
-            usefulness: { type: "number" },
-            overallScore: { type: "number" },
-            summary: { type: "string" },
-            strengths: { 
-              type: "array", 
-              items: { 
-                type: "object",
-                properties: {
-                  point: { type: "string" },
-                  reason: { type: "string" }
-                },
-                required: ["point", "reason"]
-              } 
-            },
-            weaknesses: { 
-              type: "array", 
-              items: { 
-                type: "object",
-                properties: {
-                  point: { type: "string" },
-                  reason: { type: "string" }
-                },
-                required: ["point", "reason"]
-              } 
-            },
-            recommendations: { 
-              type: "array", 
-              items: { 
-                type: "object",
-                properties: {
-                  suggestion: { type: "string" },
-                  reason: { type: "string" },
-                  impact: { type: "string" }
-                },
-                required: ["suggestion", "reason", "impact"]
-              } 
-            },
-            scoreExplanations: {
-              type: "object",
-              properties: {
-                originality: { type: "string" },
-                completeness: { type: "string" },
-                marketability: { type: "string" },
-                monetization: { type: "string" },
-                usefulness: { type: "string" }
+      const response = await ai!.models.generateContent({
+        model: "gemini-2.5-pro",
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "object",
+            properties: {
+              originality: { type: "number" },
+              completeness: { type: "number" },
+              marketability: { type: "number" },
+              monetization: { type: "number" },
+              usefulness: { type: "number" },
+              overallScore: { type: "number" },
+              summary: { type: "string" },
+              strengths: { 
+                type: "array", 
+                items: { 
+                  type: "object",
+                  properties: {
+                    point: { type: "string" },
+                    reason: { type: "string" }
+                  },
+                  required: ["point", "reason"]
+                } 
               },
-              required: ["originality", "completeness", "marketability", "monetization", "usefulness"]
-            }
-          },
-          required: ["originality", "completeness", "marketability", "monetization", "usefulness", "overallScore", "summary", "strengths", "weaknesses", "recommendations", "scoreExplanations"]
-        }
-      },
-      contents: repoInfo
-    });
+              weaknesses: { 
+                type: "array", 
+                items: { 
+                  type: "object",
+                  properties: {
+                    point: { type: "string" },
+                    reason: { type: "string" }
+                  },
+                  required: ["point", "reason"]
+                } 
+              },
+              recommendations: { 
+                type: "array", 
+                items: { 
+                  type: "object",
+                  properties: {
+                    suggestion: { type: "string" },
+                    reason: { type: "string" },
+                    impact: { type: "string" }
+                  },
+                  required: ["suggestion", "reason", "impact"]
+                } 
+              },
+              scoreExplanations: {
+                type: "object",
+                properties: {
+                  originality: { type: "string" },
+                  completeness: { type: "string" },
+                  marketability: { type: "string" },
+                  monetization: { type: "string" },
+                  usefulness: { type: "string" }
+                },
+                required: ["originality", "completeness", "marketability", "monetization", "usefulness"]
+              }
+            },
+            required: ["originality", "completeness", "marketability", "monetization", "usefulness", "overallScore", "summary", "strengths", "weaknesses", "recommendations", "scoreExplanations"]
+          }
+        },
+        contents: repoInfo
+      });
 
-    const result = JSON.parse(response.text || '{}');
-    
-    // Ensure all scores are between 1-10
-    ['originality', 'completeness', 'marketability', 'monetization', 'usefulness', 'overallScore'].forEach(key => {
-      if (result[key]) {
-        result[key] = Math.max(1, Math.min(10, result[key]));
+      const result = JSON.parse(response.text || '{}');
+      
+      // Ensure all scores are between 1-10
+      ['originality', 'completeness', 'marketability', 'monetization', 'usefulness', 'overallScore'].forEach(key => {
+        if (result[key]) {
+          result[key] = Math.max(1, Math.min(10, result[key]));
+        }
+      });
+
+      return result;
+    }, {
+      maxAttempts: 3,
+      backoff: 'exponential',
+      initialDelay: 1000,
+      onRetry: (attempt, error) => {
+        console.log(`Retrying repository analysis (attempt ${attempt}):`, error.message);
       }
     });
-
-    return result;
   } catch (error) {
+    if (error instanceof AppError) {
+      throw error;
+    }
+    
     console.error('Error analyzing repository with Gemini:', error);
     
-    // Fallback analysis with proper structure
+    // Fallback to basic analysis instead of throwing
     return createFallbackAnalysis(repo);
   }
 }
 
 function createFallbackAnalysis(repo: RepositoryAnalysisInput): RepositoryAnalysisResult {
   // Calculate basic scores based on repository metrics
-  const starScore = Math.min(10, Math.max(1, Math.log10(repo.stars + 1) * 2));
-  const forkScore = Math.min(10, Math.max(1, Math.log10(repo.forks + 1) * 2.5));
-  const sizeScore = repo.size > 0 ? Math.min(10, Math.max(1, Math.log10(repo.size) * 1.5)) : 5;
-  const languageBonus = repo.language ? 1 : 0;
-  const topicsBonus = repo.topics.length > 0 ? Math.min(2, repo.topics.length * 0.5) : 0;
-
-  const baseScore = (starScore + forkScore + sizeScore) / 3 + languageBonus + topicsBonus;
-  const normalizedScore = Math.min(10, Math.max(1, baseScore));
-
   return {
       originality: 5,
       completeness: 5,
@@ -394,7 +530,6 @@ function createFallbackAnalysis(repo: RepositoryAnalysisInput): RepositoryAnalys
         usefulness: "Score based on standard assessment - full analysis unavailable"
       }
     };
-  }
 }
 
 export interface SimilaritySearchParams {
@@ -408,8 +543,13 @@ export interface SimilaritySearchParams {
 }
 
 export async function findSimilarRepositories(repo: RepositoryAnalysisInput): Promise<string[]> {
+  if (!isGeminiEnabled() || !ai) {
+    return []; // Return empty array when AI is not available
+  }
+
   try {
-    const prompt = `Given this repository information:
+    return await retryHandler.executeWithRetry(async () => {
+      const prompt = `Given this repository information:
 Name: ${repo.name}
 Description: ${repo.description}
 Language: ${repo.language}
@@ -418,22 +558,34 @@ Topics: ${repo.topics.join(', ')}
 Find 3-5 similar GitHub repositories. Return only repository names in format "owner/repo-name", one per line.
 Focus on repositories with similar functionality, technology stack, or problem domain.`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt
+      const response = await ai!.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt
+      });
+
+      const text = response.text || '';
+      const repos = text
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.includes('/') && !line.includes(' '))
+        .slice(0, 5);
+
+      return repos;
+    }, {
+      maxAttempts: 2,
+      backoff: 'exponential',
+      initialDelay: 500,
+      onRetry: (attempt, error) => {
+        console.log(`Retrying similar repositories search (attempt ${attempt}):`, error.message);
+      }
     });
-
-    const text = response.text || '';
-    const repos = text
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.includes('/') && !line.includes(' '))
-      .slice(0, 5);
-
-    return repos;
   } catch (error) {
-    console.error('Error finding similar repositories:', error);
-    return [];
+    if (error instanceof AppError) {
+      console.error('Error finding similar repositories:', error.userMessage);
+    } else {
+      console.error('Error finding similar repositories:', error);
+    }
+    return []; // Return empty array on error
   }
 }
 
@@ -442,8 +594,17 @@ export async function findSimilarByFunctionality(params: SimilaritySearchParams)
   reasoning: string;
   similarity_scores: { [key: string]: number };
 }> {
+  if (!isGeminiEnabled() || !ai) {
+    return {
+      repositories: [],
+      reasoning: "AI-powered similarity search is currently unavailable.",
+      similarity_scores: {}
+    };
+  }
+
   try {
-    const systemPrompt = `You are an expert at analyzing GitHub repositories and finding similar projects based on functionality, use cases, and technology stack.
+    return await retryHandler.executeWithRetry(async () => {
+      const systemPrompt = `You are an expert at analyzing GitHub repositories and finding similar projects based on functionality, use cases, and technology stack.
     
     When finding similar repositories, consider:
     1. Core functionality and problem domain
@@ -454,7 +615,7 @@ export async function findSimilarByFunctionality(params: SimilaritySearchParams)
     
     Return a structured analysis with repository recommendations and similarity scores.`;
 
-    const prompt = `Analyze this repository and find similar projects:
+      const prompt = `Analyze this repository and find similar projects:
 
 Repository: ${params.name}
 Description: ${params.description}
@@ -476,57 +637,69 @@ Provide similarity scores (0-100) based on:
 - Use case alignment (20% weight)
 - Domain/industry match (10% weight)`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-pro",
-      config: {
-        systemInstruction: systemPrompt,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "object",
-          properties: {
-            repositories: { 
-              type: "array", 
-              items: { type: "string" },
-              description: "List of similar repository names in format 'owner/repo'"
-            },
-            reasoning: { 
-              type: "string",
-              description: "Explanation of why these repositories are similar"
-            },
-            similarity_scores: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  repository: { type: "string" },
-                  score: { type: "number" }
-                },
-                required: ["repository", "score"]
+      const response = await ai!.models.generateContent({
+        model: "gemini-2.5-pro",
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "object",
+            properties: {
+              repositories: { 
+                type: "array", 
+                items: { type: "string" },
+                description: "List of similar repository names in format 'owner/repo'"
               },
-              description: "Similarity scores for each repository (0-100)"
-            }
-          },
-          required: ["repositories", "reasoning", "similarity_scores"]
-        }
-      },
-      contents: prompt
-    });
+              reasoning: { 
+                type: "string",
+                description: "Explanation of why these repositories are similar"
+              },
+              similarity_scores: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    repository: { type: "string" },
+                    score: { type: "number" }
+                  },
+                  required: ["repository", "score"]
+                },
+                description: "Similarity scores for each repository (0-100)"
+              }
+            },
+            required: ["repositories", "reasoning", "similarity_scores"]
+          }
+        },
+        contents: prompt
+      });
 
-    const result = JSON.parse(response.text || '{}');
-    
-    // Ensure we have valid data
-    if (!result.repositories || !Array.isArray(result.repositories)) {
-      result.repositories = [];
-    }
-    
-    // Filter and validate repository names
-    result.repositories = result.repositories
-      .filter((repo: string) => repo && repo.includes('/'))
-      .slice(0, 8);
-    
-    return result;
+      const result = JSON.parse(response.text || '{}');
+      
+      // Ensure we have valid data
+      if (!result.repositories || !Array.isArray(result.repositories)) {
+        result.repositories = [];
+      }
+      
+      // Filter and validate repository names
+      result.repositories = result.repositories
+        .filter((repo: string) => repo && repo.includes('/'))
+        .slice(0, 8);
+      
+      return result;
+    }, {
+      maxAttempts: 3,
+      backoff: 'exponential',
+      initialDelay: 1000,
+      onRetry: (attempt, error) => {
+        console.log(`Retrying similarity search (attempt ${attempt}):`, error.message);
+      }
+    });
   } catch (error) {
-    console.error('Error finding similar repositories by functionality:', error);
+    if (error instanceof AppError) {
+      console.error('Error finding similar repositories by functionality:', error.userMessage);
+    } else {
+      console.error('Error finding similar repositories by functionality:', error);
+    }
     return {
       repositories: [],
       reasoning: "Unable to find similar repositories at this time.",

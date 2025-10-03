@@ -47,7 +47,7 @@ describe('End-to-End Performance Optimization Tests', () => {
         
         // Step 1: Check cache
         const cacheKey = `workflow-${req.query.id}`;
-        let cachedResult = await cacheManager.get(cacheKey);
+        const cachedResult = await cacheManager.get(cacheKey);
         
         if (cachedResult) {
           return res.json({

@@ -28,6 +28,8 @@ import Integrations from "@/pages/integrations";
 import CodeReview from "@/pages/code-review";
 import { AIAssistant } from "@/components/ai-assistant";
 import OnboardingTour from "@/components/onboarding-tour";
+import { SkipLink } from "@/components/skip-link";
+import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -77,6 +79,8 @@ function App() {
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
+          <SkipLink />
+          <KeyboardShortcutsDialog />
           <Toaster />
           <Router />
           <AIAssistant />

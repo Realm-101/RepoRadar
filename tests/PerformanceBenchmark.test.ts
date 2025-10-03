@@ -10,7 +10,7 @@ class MockCacheManager {
     return this.cache.get(key) || null;
   }
   
-  async set(key: string, value: any, ttl?: number): Promise<void> {
+  async set(key: string, value: unknown, ttl?: number): Promise<void> {
     this.cache.set(key, value);
   }
   
@@ -21,7 +21,7 @@ class MockCacheManager {
 
 class MockCompressionMiddleware {
   middleware() {
-    return (req: any, res: any, next: any) => {
+    return (req: { headers: Record<string, string> }, res: { setHeader: (name: string, value: string) => void }, next: () => void) => {
       // Mock compression by setting header
       if (req.headers['accept-encoding']?.includes('gzip')) {
         res.setHeader('content-encoding', 'gzip');
@@ -36,7 +36,7 @@ class MockConnectionPool {
     return { id: 'mock-connection' };
   }
   
-  async releaseConnection(connection: any): Promise<void> {
+  async releaseConnection(connection: unknown): Promise<void> {
     // Mock release
   }
   

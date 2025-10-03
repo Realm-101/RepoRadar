@@ -35,6 +35,134 @@ interface ExportAnalysis {
 }
 
 /**
+ * Helper: Get score color for PDF
+ */
+function getScoreColor(score: number): [number, number, number] {
+  if (score >= 80) return [34, 197, 94];
+  if (score >= 60) return [251, 191, 36];
+  return [239, 68, 68];
+}
+
+/**
+ * Helper: Add repository info to PDF
+ */
+function addRepositoryInfo(
+  pdf: jsPDF,
+  analysis: ExportAnalysis,
+  margin: number,
+  pageWidth: number,
+  startY: number
+): number {
+  let yPosition = startY;
+  
+  if (!analysis.repository) return yPosition;
+  
+  pdf.setFontSize(16);
+  pdf.setTextColor(0, 0, 0);
+  pdf.text(analysis.repository.name || 'Unknown Repository', margin, yPosition);
+  yPosition += 8;
+
+  pdf.setFontSize(10);
+  pdf.setTextColor(100, 100, 100);
+  
+  const fields = [
+    { label: 'Full Name', value: analysis.repository.full_name },
+    { label: 'Language', value: analysis.repository.language },
+    { label: 'Stars', value: analysis.repository.stargazers_count?.toLocaleString() },
+    { label: 'Forks', value: analysis.repository.forks_count?.toLocaleString() },
+  ];
+  
+  fields.forEach(field => {
+    if (field.value) {
+      pdf.text(`${field.label}: ${field.value}`, margin, yPosition);
+      yPosition += 5;
+    }
+  });
+  
+  if (analysis.repository.description) {
+    const descLines = pdf.splitTextToSize(analysis.repository.description, pageWidth - margin * 2);
+    pdf.text(descLines, margin, yPosition);
+    yPosition += descLines.length * 5 + 5;
+  }
+  
+  return yPosition;
+}
+
+/**
+ * Helper: Add metrics section to PDF
+ */
+function addMetricsSection(
+  pdf: jsPDF,
+  analysis: ExportAnalysis,
+  margin: number,
+  startY: number
+): number {
+  let yPosition = startY;
+  
+  const metrics = [
+    { name: 'Originality', value: analysis.originality_score, color: [99, 102, 241] as [number, number, number] },
+    { name: 'Completeness', value: analysis.completeness_score, color: [34, 197, 94] as [number, number, number] },
+    { name: 'Marketability', value: analysis.marketability_score, color: [251, 191, 36] as [number, number, number] },
+    { name: 'Monetization', value: analysis.monetization_score, color: [236, 72, 153] as [number, number, number] },
+    { name: 'Usefulness', value: analysis.usefulness_score, color: [59, 130, 246] as [number, number, number] }
+  ];
+
+  pdf.setFontSize(11);
+  metrics.forEach(metric => {
+    pdf.setTextColor(0, 0, 0);
+    pdf.text(metric.name, margin, yPosition);
+    
+    const score = metric.value || 0;
+    pdf.setFillColor(metric.color[0], metric.color[1], metric.color[2]);
+    pdf.rect(margin + 35, yPosition - 4, (score / 100) * 40, 6, 'F');
+    pdf.text(`${score}/100`, margin + 80, yPosition);
+    yPosition += 8;
+  });
+  
+  return yPosition;
+}
+
+/**
+ * Helper: Add list section to PDF
+ */
+function addListSection(
+  pdf: jsPDF,
+  title: string,
+  items: string[],
+  margin: number,
+  pageWidth: number,
+  pageHeight: number,
+  startY: number
+): number {
+  let yPosition = startY;
+  
+  if (yPosition > pageHeight - 60) {
+    pdf.addPage();
+    yPosition = margin;
+  }
+  
+  pdf.setFontSize(14);
+  pdf.setTextColor(0, 0, 0);
+  pdf.text(title, margin, yPosition);
+  yPosition += 8;
+
+  pdf.setFontSize(10);
+  pdf.setTextColor(60, 60, 60);
+  
+  items.forEach((item: string) => {
+    if (yPosition > pageHeight - 20) {
+      pdf.addPage();
+      yPosition = margin;
+    }
+    const lines = pdf.splitTextToSize(`• ${item}`, pageWidth - margin * 2);
+    pdf.text(lines, margin + 2, yPosition);
+    yPosition += lines.length * 5 + 2;
+  });
+  
+  return yPosition;
+}
+
+/**
  * Export analysis results as PDF
  */
 export async function exportToPDF(analysis: ExportAnalysis, elementId?: string) {
@@ -46,41 +174,12 @@ export async function exportToPDF(analysis: ExportAnalysis, elementId?: string) 
 
   // Title
   pdf.setFontSize(20);
-  pdf.setTextColor(99, 102, 241); // Primary color
+  pdf.setTextColor(99, 102, 241);
   pdf.text('Repository Analysis Report', pageWidth / 2, yPosition, { align: 'center' });
   yPosition += 15;
 
   // Repository Info
-  if (analysis.repository) {
-    pdf.setFontSize(16);
-    pdf.setTextColor(0, 0, 0);
-    pdf.text(analysis.repository.name || 'Unknown Repository', margin, yPosition);
-    yPosition += 8;
-
-    pdf.setFontSize(10);
-    pdf.setTextColor(100, 100, 100);
-    if (analysis.repository.full_name) {
-      pdf.text(`Full Name: ${analysis.repository.full_name}`, margin, yPosition);
-      yPosition += 5;
-    }
-    if (analysis.repository.description) {
-      const descLines = pdf.splitTextToSize(analysis.repository.description, pageWidth - margin * 2);
-      pdf.text(descLines, margin, yPosition);
-      yPosition += descLines.length * 5 + 5;
-    }
-    if (analysis.repository.language) {
-      pdf.text(`Language: ${analysis.repository.language}`, margin, yPosition);
-      yPosition += 5;
-    }
-    if (analysis.repository.stargazers_count !== undefined) {
-      pdf.text(`Stars: ${analysis.repository.stargazers_count.toLocaleString()}`, margin, yPosition);
-      yPosition += 5;
-    }
-    if (analysis.repository.forks_count !== undefined) {
-      pdf.text(`Forks: ${analysis.repository.forks_count.toLocaleString()}`, margin, yPosition);
-      yPosition += 10;
-    }
-  }
+  yPosition = addRepositoryInfo(pdf, analysis, margin, pageWidth, yPosition);
 
   // Analysis Date
   pdf.setFontSize(10);
@@ -95,7 +194,7 @@ export async function exportToPDF(analysis: ExportAnalysis, elementId?: string) 
   yPosition += 7;
 
   const overallScore = analysis.overall_score || 0;
-  const scoreColor = overallScore >= 80 ? [34, 197, 94] : overallScore >= 60 ? [251, 191, 36] : [239, 68, 68];
+  const scoreColor = getScoreColor(overallScore);
   pdf.setFillColor(scoreColor[0], scoreColor[1], scoreColor[2]);
   pdf.rect(margin, yPosition - 5, (overallScore / 100) * 50, 8, 'F');
   pdf.setTextColor(0, 0, 0);
@@ -106,78 +205,18 @@ export async function exportToPDF(analysis: ExportAnalysis, elementId?: string) 
   pdf.setFontSize(14);
   pdf.text('Individual Metrics', margin, yPosition);
   yPosition += 10;
-
-  const metrics = [
-    { name: 'Originality', value: analysis.originality_score, color: [99, 102, 241] },
-    { name: 'Completeness', value: analysis.completeness_score, color: [34, 197, 94] },
-    { name: 'Marketability', value: analysis.marketability_score, color: [251, 191, 36] },
-    { name: 'Monetization', value: analysis.monetization_score, color: [236, 72, 153] },
-    { name: 'Usefulness', value: analysis.usefulness_score, color: [59, 130, 246] }
-  ];
-
-  pdf.setFontSize(11);
-  metrics.forEach(metric => {
-    pdf.setTextColor(0, 0, 0);
-    pdf.text(metric.name, margin, yPosition);
-    
-    const score = metric.value || 0;
-    pdf.setFillColor(metric.color[0], metric.color[1], metric.color[2]);
-    pdf.rect(margin + 35, yPosition - 4, (score / 100) * 40, 6, 'F');
-    pdf.text(`${score}/100`, margin + 80, yPosition);
-    yPosition += 8;
-  });
-
+  yPosition = addMetricsSection(pdf, analysis, margin, yPosition);
   yPosition += 5;
 
   // Key Findings
   if (analysis.key_findings && analysis.key_findings.length > 0) {
-    if (yPosition > pageHeight - 60) {
-      pdf.addPage();
-      yPosition = margin;
-    }
-    
-    pdf.setFontSize(14);
-    pdf.setTextColor(0, 0, 0);
-    pdf.text('Key Findings', margin, yPosition);
-    yPosition += 8;
-
-    pdf.setFontSize(10);
-    pdf.setTextColor(60, 60, 60);
-    analysis.key_findings.forEach((finding: string) => {
-      if (yPosition > pageHeight - 20) {
-        pdf.addPage();
-        yPosition = margin;
-      }
-      const lines = pdf.splitTextToSize(`• ${finding}`, pageWidth - margin * 2);
-      pdf.text(lines, margin + 2, yPosition);
-      yPosition += lines.length * 5 + 2;
-    });
+    yPosition = addListSection(pdf, 'Key Findings', analysis.key_findings, margin, pageWidth, pageHeight, yPosition);
   }
 
   // Recommendations
   if (analysis.recommendations && analysis.recommendations.length > 0) {
-    if (yPosition > pageHeight - 60) {
-      pdf.addPage();
-      yPosition = margin;
-    }
-    
     yPosition += 5;
-    pdf.setFontSize(14);
-    pdf.setTextColor(0, 0, 0);
-    pdf.text('Recommendations', margin, yPosition);
-    yPosition += 8;
-
-    pdf.setFontSize(10);
-    pdf.setTextColor(60, 60, 60);
-    analysis.recommendations.forEach((rec: string) => {
-      if (yPosition > pageHeight - 20) {
-        pdf.addPage();
-        yPosition = margin;
-      }
-      const lines = pdf.splitTextToSize(`• ${rec}`, pageWidth - margin * 2);
-      pdf.text(lines, margin + 2, yPosition);
-      yPosition += lines.length * 5 + 2;
-    });
+    yPosition = addListSection(pdf, 'Recommendations', analysis.recommendations, margin, pageWidth, pageHeight, yPosition);
   }
 
   // Try to capture visual element if provided
@@ -209,6 +248,55 @@ export async function exportToPDF(analysis: ExportAnalysis, elementId?: string) 
 }
 
 /**
+ * Helper: Escape CSV field
+ */
+function escapeCSVField(value: string | undefined | null): string {
+  if (!value) return '';
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+/**
+ * Helper: Convert analysis to CSV row
+ */
+function analysisToCSVRow(analysis: ExportAnalysis): string[] {
+  return [
+    analysis.repository?.name || '',
+    analysis.repository?.full_name || '',
+    escapeCSVField(analysis.repository?.description),
+    analysis.repository?.language || '',
+    analysis.repository?.stargazers_count?.toString() || '0',
+    analysis.repository?.forks_count?.toString() || '0',
+    new Date(analysis.createdAt).toLocaleDateString(),
+    analysis.overall_score?.toString() || '0',
+    analysis.originality_score?.toString() || '0',
+    analysis.completeness_score?.toString() || '0',
+    analysis.marketability_score?.toString() || '0',
+    analysis.monetization_score?.toString() || '0',
+    analysis.usefulness_score?.toString() || '0',
+    escapeCSVField(analysis.key_findings?.join('; ')),
+    escapeCSVField(analysis.recommendations?.join('; ')),
+    escapeCSVField(analysis.weaknesses?.join('; '))
+  ];
+}
+
+/**
+ * Helper: Download CSV file
+ */
+function downloadCSV(content: string, fileName: string): void {
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  
+  link.setAttribute('href', url);
+  link.setAttribute('download', fileName);
+  link.style.visibility = 'hidden';
+  
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+/**
  * Export analysis results as CSV
  */
 export function exportToCSV(analyses: ExportAnalysis[] | ExportAnalysis) {
@@ -235,26 +323,7 @@ export function exportToCSV(analyses: ExportAnalysis[] | ExportAnalysis) {
   ];
 
   // Convert data to CSV rows
-  const rows = dataArray.map(analysis => {
-    return [
-      analysis.repository?.name || '',
-      analysis.repository?.full_name || '',
-      `"${(analysis.repository?.description || '').replace(/"/g, '""')}"`,
-      analysis.repository?.language || '',
-      analysis.repository?.stargazers_count?.toString() || '0',
-      analysis.repository?.forks_count?.toString() || '0',
-      new Date(analysis.createdAt).toLocaleDateString(),
-      analysis.overall_score?.toString() || '0',
-      analysis.originality_score?.toString() || '0',
-      analysis.completeness_score?.toString() || '0',
-      analysis.marketability_score?.toString() || '0',
-      analysis.monetization_score?.toString() || '0',
-      analysis.usefulness_score?.toString() || '0',
-      `"${(analysis.key_findings?.join('; ') || '').replace(/"/g, '""')}"`,
-      `"${(analysis.recommendations?.join('; ') || '').replace(/"/g, '""')}"`,
-      `"${(analysis.weaknesses?.join('; ') || '').replace(/"/g, '""')}"`
-    ];
-  });
+  const rows = dataArray.map(analysisToCSVRow);
 
   // Combine headers and rows
   const csvContent = [
@@ -262,22 +331,12 @@ export function exportToCSV(analyses: ExportAnalysis[] | ExportAnalysis) {
     ...rows.map(row => row.join(','))
   ].join('\n');
 
-  // Create and download the file
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-  
+  // Generate filename
   const fileName = dataArray.length > 1 
     ? `batch_analysis_${new Date().toISOString().split('T')[0]}.csv`
     : `analysis_${dataArray[0]?.repository?.name || 'repository'}_${new Date().toISOString().split('T')[0]}.csv`;
   
-  link.setAttribute('href', url);
-  link.setAttribute('download', fileName);
-  link.style.visibility = 'hidden';
-  
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  downloadCSV(csvContent, fileName);
 }
 
 /**

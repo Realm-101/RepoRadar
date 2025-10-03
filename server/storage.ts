@@ -143,7 +143,7 @@ export interface IStorage {
   addToCollection(collectionId: number, repositoryId: string, notes?: string): Promise<CollectionItem>;
   
   // Activity tracking
-  trackActivity(userId: string, action: string, repositoryId?: string, metadata?: any): Promise<UserActivity>;
+  trackActivity(userId: string, action: string, repositoryId?: string, metadata?: Record<string, unknown>): Promise<UserActivity>;
   getUserRecentActivity(userId: string, limit?: number): Promise<UserActivity[]>;
   
   // Repository tracking operations
@@ -403,7 +403,20 @@ export class DatabaseStorage implements IStorage {
     return result.count;
   }
 
-  async getUserAnalyses(userId: string): Promise<any[]> {
+  async getUserAnalyses(userId: string): Promise<Array<{
+    id: string;
+    repositoryId: string;
+    repositoryName: string;
+    repositoryOwner: string;
+    originality: number;
+    completeness: number;
+    marketability: number;
+    monetization: number;
+    usefulness: number;
+    overallScore: number;
+    primaryLanguage?: string;
+    createdAt: Date;
+  }>> {
     const results = await db
       .select({
         id: repositoryAnalyses.id,
@@ -666,7 +679,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Activity tracking
-  async trackActivity(userId: string, action: string, repositoryId?: string, metadata?: any): Promise<UserActivity> {
+  async trackActivity(userId: string, action: string, repositoryId?: string, metadata?: Record<string, unknown>): Promise<UserActivity> {
     const [activity] = await db
       .insert(userActivities)
       .values({ userId, action, repositoryId, metadata })
@@ -755,8 +768,9 @@ export class DatabaseStorage implements IStorage {
       .returning();
     
     // Send real-time notification if available
-    if ((global as any).sendRealtimeNotification) {
-      (global as any).sendRealtimeNotification(notification.userId, newNotification);
+    const globalWithNotification = global as typeof global & { sendRealtimeNotification?: (userId: string, notification: unknown) => void };
+    if (globalWithNotification.sendRealtimeNotification) {
+      globalWithNotification.sendRealtimeNotification(notification.userId, newNotification);
     }
     
     return newNotification;
@@ -1165,7 +1179,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Team operations
-  async getUserTeams(userId: string): Promise<any[]> {
+  async getUserTeams(userId: string): Promise<Array<{ id: string; name: string; role: string }>> {
     const userTeams = await db
       .select({
         id: teams.id,
@@ -1220,7 +1234,7 @@ export class DatabaseStorage implements IStorage {
     return !!member;
   }
 
-  async getTeamMembers(teamId: string): Promise<any[]> {
+  async getTeamMembers(teamId: string): Promise<Array<{ userId: string; role: string; email?: string }>> {
     const members = await db
       .select({
         id: teamMembers.id,
@@ -1255,7 +1269,7 @@ export class DatabaseStorage implements IStorage {
     return member?.role || null;
   }
 
-  async createTeamInvitation(invitation: any): Promise<any> {
+  async createTeamInvitation(invitation: { teamId: string; email: string; role: string }): Promise<{ id: string; token: string; expiresAt: Date }> {
     const token = Math.random().toString(36).substring(2, 15);
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7); // 7 days expiry

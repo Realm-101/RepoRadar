@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
+import { LoadingSkeleton } from '@/components/skeleton-loader';
 
 export function TrendingRepos() {
   const { data: trending, isLoading } = useQuery({
@@ -20,11 +20,7 @@ export function TrendingRepos() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {[...Array(3)].map((_, i) => (
-              <Skeleton key={i} className="h-20 bg-gray-800" />
-            ))}
-          </div>
+          <LoadingSkeleton variant="list" count={5} />
         </CardContent>
       </Card>
     );

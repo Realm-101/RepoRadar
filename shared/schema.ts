@@ -525,6 +525,32 @@ export const webhooks = pgTable("webhooks", {
 export type Webhook = typeof webhooks.$inferSelect;
 export type InsertWebhook = typeof webhooks.$inferInsert;
 
+// Analytics events table for tracking user behavior
+export const analyticsEvents = pgTable("analytics_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  eventName: varchar("event_name", { length: 255 }).notNull(),
+  eventCategory: varchar("event_category", { length: 100 }).notNull(),
+  properties: jsonb("properties"),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  sessionId: varchar("session_id", { length: 255 }).notNull(),
+  timestamp: timestamp("timestamp").notNull().defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_analytics_events_name").on(table.eventName),
+  index("idx_analytics_events_timestamp").on(table.timestamp),
+  index("idx_analytics_events_session").on(table.sessionId),
+  index("idx_analytics_events_category").on(table.eventCategory),
+  index("idx_analytics_events_user").on(table.userId),
+]);
+
+export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;
+export type InsertAnalyticsEvent = typeof analyticsEvents.$inferInsert;
+
+export const insertAnalyticsEventSchema = createInsertSchema(analyticsEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Add relations for new tables
 export const trackedRepositoriesRelations = relations(trackedRepositories, ({ one }) => ({
   user: one(users, {
@@ -545,6 +571,13 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
   repository: one(repositories, {
     fields: [notifications.repositoryId],
     references: [repositories.id],
+  }),
+}));
+
+export const analyticsEventsRelations = relations(analyticsEvents, ({ one }) => ({
+  user: one(users, {
+    fields: [analyticsEvents.userId],
+    references: [users.id],
   }),
 }));
 

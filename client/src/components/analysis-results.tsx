@@ -15,9 +15,9 @@ interface AnalysisResultsProps {
     usefulness: number;
     overallScore: number;
     summary: string;
-    strengths: string[];
-    weaknesses: string[];
-    recommendations: string[];
+    strengths: Array<{ point: string; reason: string }> | string[];
+    weaknesses: Array<{ point: string; reason: string }> | string[];
+    recommendations: Array<{ suggestion: string; reason: string; impact: string }> | string[];
     scoreExplanations?: {
       [key: string]: string;
     };
@@ -147,13 +147,13 @@ export default function AnalysisResults({ analysis, repository }: AnalysisResult
 
   return (
     <Card className="bg-card border border-border mb-8" id="analysis-results">
-      <CardContent className="p-8">
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-semibold">AI Analysis Results</h2>
-          <div className="flex gap-2" data-tour="export-buttons">
+      <CardContent className="p-4 md:p-8">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6 md:mb-8">
+          <h2 className="text-xl md:text-2xl font-semibold">AI Analysis Results</h2>
+          <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto" data-tour="export-buttons">
             <Button
               onClick={handleExportPDF}
-              className="bg-gradient-to-r from-primary to-secondary hover:from-secondary hover:to-primary"
+              className="bg-gradient-to-r from-primary to-secondary hover:from-secondary hover:to-primary touch-target w-full sm:w-auto"
               data-testid="button-export-pdf"
             >
               <FileText className="w-4 h-4 mr-2" />
@@ -162,7 +162,7 @@ export default function AnalysisResults({ analysis, repository }: AnalysisResult
             <Button
               onClick={handleExportCSV}
               variant="outline"
-              className="border-primary text-primary hover:bg-primary hover:text-white"
+              className="border-primary text-primary hover:bg-primary hover:text-white touch-target w-full sm:w-auto"
               data-testid="button-export-csv"
             >
               <FileDown className="w-4 h-4 mr-2" />
@@ -172,42 +172,42 @@ export default function AnalysisResults({ analysis, repository }: AnalysisResult
         </div>
 
         {/* Analysis Summary */}
-        <div className="mb-8">
-          <h3 className="text-xl font-semibold mb-4">Summary</h3>
-          <div className="bg-dark rounded-lg p-6 border border-border">
-            <p className="text-gray-300 leading-relaxed" data-testid="text-analysis-summary">
+        <div className="mb-6 md:mb-8">
+          <h3 className="text-lg md:text-xl font-semibold mb-3 md:mb-4">Summary</h3>
+          <div className="bg-dark rounded-lg p-4 md:p-6 border border-border">
+            <p className="text-sm md:text-base text-gray-300 leading-relaxed" data-testid="text-analysis-summary">
               {analysis.summary}
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8" data-tour="metrics-display">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-8 mb-6 md:mb-8 mobile-scroll" data-tour="metrics-display">
           {/* Scores */}
-          <div className="space-y-6">
-            <h3 className="text-xl font-semibold mb-4">Detailed Scores</h3>
+          <div className="space-y-4 md:space-y-6">
+            <h3 className="text-lg md:text-xl font-semibold mb-3 md:mb-4">Detailed Scores</h3>
             
-            <div className="space-y-4">
+            <div className="space-y-3 md:space-y-4">
               {[
                 { label: 'Originality', score: analysis.originality, key: 'originality' },
                 { label: 'Completeness', score: analysis.completeness, key: 'completeness' },
                 { label: 'Marketability', score: analysis.marketability, key: 'marketability' },
               ].map(({ label, score, key }) => (
-                <div key={key} className="bg-dark rounded-lg p-4">
+                <div key={key} className="bg-dark rounded-lg p-3 md:p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center space-x-2">
-                      <span className="text-2xl">{getMetricHealthIndicator(key, score * 10)}</span>
-                      <span className="font-medium">{label}</span>
+                      <span className="text-xl md:text-2xl">{getMetricHealthIndicator(key, score * 10)}</span>
+                      <span className="text-sm md:text-base font-medium">{label}</span>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <span className={`text-2xl font-bold ${getScoreColor(score)}`} data-testid={`score-${key}`}>
+                    <div className="flex items-center space-x-1 md:space-x-2">
+                      <span className={`text-xl md:text-2xl font-bold ${getScoreColor(score)}`} data-testid={`score-${key}`}>
                         {score.toFixed(1)}
                       </span>
-                      <span className={`text-sm ${getScoreHealthIndicator(score * 10).color}`}>
+                      <span className={`text-xs md:text-sm ${getScoreHealthIndicator(score * 10).color} hidden sm:inline`}>
                         {getScoreHealthIndicator(score * 10).label}
                       </span>
                     </div>
                   </div>
-                  <div className="w-full h-3 bg-gray-700 rounded-full overflow-hidden mb-2">
+                  <div className="w-full h-2 md:h-3 bg-gray-700 rounded-full overflow-hidden mb-2">
                     <div 
                       className={`h-full bg-gradient-to-r ${getScoreGradient(key)} rounded-full transition-all duration-1000`}
                       style={{ width: getProgressWidth(score) }}
@@ -223,10 +223,10 @@ export default function AnalysisResults({ analysis, repository }: AnalysisResult
             </div>
           </div>
 
-          <div className="space-y-6">
-            <h3 className="text-xl font-semibold mb-4">Additional Metrics</h3>
+          <div className="space-y-4 md:space-y-6">
+            <h3 className="text-lg md:text-xl font-semibold mb-3 md:mb-4">Additional Metrics</h3>
             
-            <div className="space-y-4">
+            <div className="space-y-3 md:space-y-4">
               {[
                 { label: 'Monetization Potential', score: analysis.monetization, key: 'monetization' },
                 { label: 'Overall Usefulness', score: analysis.usefulness, key: 'usefulness' },
@@ -287,15 +287,15 @@ export default function AnalysisResults({ analysis, repository }: AnalysisResult
         </div>
 
         {/* Strengths, Weaknesses, and Recommendations */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
           {/* Strengths */}
           <div>
-            <h3 className="text-lg font-semibold mb-4 text-green-400">
+            <h3 className="text-base md:text-lg font-semibold mb-3 md:mb-4 text-green-400">
               <i className="fas fa-check-circle mr-2"></i>
               Strengths
             </h3>
-            <div className="space-y-3">
-              {analysis.strengths.map((strength: any, index: number) => (
+            <div className="space-y-2 md:space-y-3">
+              {analysis.strengths.map((strength, index: number) => (
                 <div 
                   key={index}
                   className="bg-dark rounded-lg p-3 border-l-4 border-green-400"
@@ -316,12 +316,12 @@ export default function AnalysisResults({ analysis, repository }: AnalysisResult
 
           {/* Weaknesses */}
           <div>
-            <h3 className="text-lg font-semibold mb-4 text-red-400">
+            <h3 className="text-base md:text-lg font-semibold mb-3 md:mb-4 text-red-400">
               <i className="fas fa-exclamation-triangle mr-2"></i>
               Areas for Improvement
             </h3>
-            <div className="space-y-3">
-              {analysis.weaknesses.map((weakness: any, index: number) => (
+            <div className="space-y-2 md:space-y-3">
+              {analysis.weaknesses.map((weakness, index: number) => (
                 <div 
                   key={index}
                   className="bg-dark rounded-lg p-3 border-l-4 border-red-400"
@@ -342,12 +342,12 @@ export default function AnalysisResults({ analysis, repository }: AnalysisResult
 
           {/* Recommendations */}
           <div>
-            <h3 className="text-lg font-semibold mb-4 text-primary">
+            <h3 className="text-base md:text-lg font-semibold mb-3 md:mb-4 text-primary">
               <i className="fas fa-lightbulb mr-2"></i>
               Recommendations
             </h3>
-            <div className="space-y-3">
-              {analysis.recommendations.map((recommendation: any, index: number) => (
+            <div className="space-y-2 md:space-y-3">
+              {analysis.recommendations.map((recommendation, index: number) => (
                 <div 
                   key={index}
                   className="bg-dark rounded-lg p-3 border-l-4 border-primary"

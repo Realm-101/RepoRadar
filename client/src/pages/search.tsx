@@ -12,6 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, ChevronUp, Filter, Search as SearchIcon, Star, Calendar, Code, TrendingUp } from "lucide-react";
+import { LoadingSkeleton } from "@/components/skeleton-loader";
+import { ContentTransition } from "@/components/content-transition";
 
 interface SearchFilters {
   language: string;
@@ -163,19 +165,19 @@ export default function Search() {
       <Header />
       
       {/* Search Section */}
-      <section className="py-12 bg-gradient-to-r from-dark via-card to-dark">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold mb-4">
+      <section className="py-8 md:py-12 bg-gradient-to-r from-dark via-card to-dark" aria-label="Search form">
+        <div className="max-w-7xl mx-auto px-4 md:px-6">
+          <div className="text-center mb-6 md:mb-8">
+            <h1 className="text-2xl md:text-4xl font-bold mb-3 md:mb-4">
               Advanced <span className="gradient-text">Repository Search</span>
             </h1>
-            <p className="text-xl text-gray-300">Discover repositories with powerful filters and sorting</p>
+            <p className="text-base md:text-xl text-gray-300">Discover repositories with powerful filters and sorting</p>
           </div>
           
           <Card className="bg-card/50 border border-border backdrop-blur-sm">
-            <CardContent className="p-6">
+            <CardContent className="p-4 md:p-6">
               <form onSubmit={handleSearch} className="space-y-4">
-                <div className="flex items-center space-x-4">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
                   <div className="flex-1 relative">
                     <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                     <Input
@@ -189,7 +191,7 @@ export default function Search() {
                   </div>
                   <Button
                     type="submit"
-                    className="bg-gradient-to-r from-primary to-secondary hover:from-secondary hover:to-primary px-8 py-2 rounded-lg font-semibold transition-all duration-300"
+                    className="bg-gradient-to-r from-primary to-secondary hover:from-secondary hover:to-primary px-6 md:px-8 py-2 rounded-lg font-semibold transition-all duration-300 touch-target w-full sm:w-auto"
                     disabled={!query}
                     data-testid="button-search"
                   >
@@ -200,7 +202,7 @@ export default function Search() {
                     type="button"
                     onClick={() => setFiltersOpen(!filtersOpen)}
                     variant="outline"
-                    className="border-border text-gray-300 hover:bg-gray-800"
+                    className="border-border text-gray-300 hover:bg-gray-800 touch-target w-full sm:w-auto"
                   >
                     <Filter className="mr-2 w-4 h-4" />
                     Filters
@@ -437,46 +439,35 @@ export default function Search() {
       </section>
 
       {/* Results Section */}
-      <section className="py-16 bg-dark">
-        <div className="max-w-7xl mx-auto px-6">
+      <main id="main-content" className="py-8 md:py-16 bg-dark" role="main" aria-label="Search results">
+        <div className="max-w-7xl mx-auto px-4 md:px-6">
           {searchTerm && (
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold mb-2">
+            <div className="mb-6 md:mb-8">
+              <h2 className="text-xl md:text-2xl font-bold mb-2">
                 Search results for "<span className="text-primary">{searchTerm}</span>"
               </h2>
               {searchResults && (
-                <p className="text-gray-400">
+                <p className="text-sm md:text-base text-gray-400">
                   Found {searchResults.length} repositories
                 </p>
               )}
             </div>
           )}
 
-          {isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[...Array(9)].map((_, i) => (
-                <div key={i} className="bg-card border border-border rounded-xl p-6 animate-pulse">
-                  <div className="flex items-center space-x-3 mb-4">
-                    <div className="w-10 h-10 bg-gray-700 rounded-lg"></div>
-                    <div className="space-y-2">
-                      <div className="h-4 bg-gray-700 rounded w-32"></div>
-                      <div className="h-3 bg-gray-700 rounded w-24"></div>
-                    </div>
-                  </div>
-                  <div className="space-y-2 mb-4">
-                    <div className="h-3 bg-gray-700 rounded"></div>
-                    <div className="h-3 bg-gray-700 rounded w-3/4"></div>
-                  </div>
-                  <div className="h-8 bg-gray-700 rounded"></div>
-                </div>
-              ))}
-            </div>
-          ) : searchResults && searchResults.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {searchResults.map((repository: any) => (
+          <ContentTransition
+            isLoading={isLoading}
+            skeleton={
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+                <LoadingSkeleton variant="card" count={9} />
+              </div>
+            }
+          >
+            {searchResults && searchResults.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+                {searchResults.map((repository: { id: string; name: string; full_name: string; description?: string; language?: string; stargazers_count?: number; forks_count?: number }) => (
                 <div
                   key={repository.id}
-                  className="bg-card border border-border rounded-xl p-6 hover:border-primary/30 transition-all duration-300 cursor-pointer"
+                  className="bg-card border border-border rounded-xl p-4 md:p-6 hover:border-primary/30 transition-all duration-300 cursor-pointer touch-target"
                   onClick={() => window.location.href = `/repository/${repository.id}`}
                   data-testid={`card-repository-${repository.id}`}
                 >
@@ -522,11 +513,11 @@ export default function Search() {
                     <button className="text-primary hover:text-secondary transition-colors text-sm font-medium">
                       View Details
                     </button>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : searchTerm ? (
+                ))}
+              </div>
+            ) : searchTerm ? (
             <div className="text-center py-16">
               <div className="w-16 h-16 rounded-full bg-gradient-to-r from-secondary to-accent flex items-center justify-center mx-auto mb-4">
                 <i className="fas fa-search text-white text-2xl"></i>
@@ -543,21 +534,22 @@ export default function Search() {
                 data-testid="button-clear-search"
               >
                 Clear Search
-              </Button>
-            </div>
-          ) : (
-            <div className="text-center py-16">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-r from-primary to-secondary flex items-center justify-center mx-auto mb-4 animate-float">
-                <i className="fas fa-search text-white text-2xl"></i>
+                </Button>
               </div>
-              <h3 className="text-2xl font-bold mb-2">Search Repositories</h3>
-              <p className="text-gray-400">
-                Enter a search term above to discover GitHub repositories
-              </p>
-            </div>
-          )}
+            ) : (
+              <div className="text-center py-16">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-r from-primary to-secondary flex items-center justify-center mx-auto mb-4 animate-float">
+                  <i className="fas fa-search text-white text-2xl"></i>
+                </div>
+                <h3 className="text-2xl font-bold mb-2">Search Repositories</h3>
+                <p className="text-gray-400">
+                  Enter a search term above to discover GitHub repositories
+                </p>
+              </div>
+            )}
+          </ContentTransition>
         </div>
-      </section>
+      </main>
     </div>
   );
 }

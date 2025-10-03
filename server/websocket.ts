@@ -72,19 +72,19 @@ export class WebSocketService {
   }
 
   // Notification methods
-  notifyUser(userId: string, event: string, data: any) {
+  notifyUser(userId: string, event: string, data: unknown) {
     this.io.to(`user:${userId}`).emit(event, data);
   }
 
-  notifyRepositoryWatchers(repositoryId: string, event: string, data: any) {
+  notifyRepositoryWatchers(repositoryId: string, event: string, data: unknown) {
     this.io.to(`repository:${repositoryId}`).emit(event, data);
   }
 
-  notifyAnalysisWatchers(analysisId: string, event: string, data: any) {
+  notifyAnalysisWatchers(analysisId: string, event: string, data: unknown) {
     this.io.to(`analysis:${analysisId}`).emit(event, data);
   }
 
-  broadcastToAll(event: string, data: any) {
+  broadcastToAll(event: string, data: unknown) {
     this.io.emit(event, data);
   }
 
@@ -115,7 +115,7 @@ export class WebSocketService {
   }
 
   // System notifications
-  notifySystemAlert(severity: 'info' | 'warning' | 'error', message: string, data?: any) {
+  notifySystemAlert(severity: 'info' | 'warning' | 'error', message: string, data?: unknown) {
     this.broadcastToAll('system_alert', {
       severity,
       message,
@@ -125,7 +125,7 @@ export class WebSocketService {
   }
 
   // User activity notifications
-  notifyNewAnalysis(userId: string, analysis: any) {
+  notifyNewAnalysis(userId: string, analysis: { id: string; repositoryName: string; overallScore: number }) {
     this.notifyUser(userId, 'new_analysis', {
       type: 'analysis_completed',
       analysis,
@@ -135,7 +135,7 @@ export class WebSocketService {
 
   notifyCollaborationUpdate(userIds: string[], update: {
     type: 'shared' | 'unshared' | 'comment' | 'review';
-    data: any;
+    data: unknown;
   }) {
     userIds.forEach(userId => {
       this.notifyUser(userId, 'collaboration_update', {
