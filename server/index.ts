@@ -1,10 +1,18 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { gracefulShutdown } from "./gracefulShutdown";
+import { instanceId, logger } from "./instanceId";
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Add instance ID to all responses for debugging
+app.use((req, res, next) => {
+  res.setHeader('X-Instance-Id', instanceId.getId());
+  next();
+});
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -37,6 +45,9 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Log instance startup
+  logger.info('Starting application instance', instanceId.getMetadata());
+
   const server = await registerRoutes(app);
 
   // Import and use the enhanced error handler
@@ -62,6 +73,15 @@ app.use((req, res, next) => {
     host: "0.0.0.0",
     reusePort: true,
   }, () => {
+    logger.info(`Server listening on port ${port}`);
     log(`serving on port ${port}`);
   });
+
+  // Initialize graceful shutdown handler
+  gracefulShutdown.initialize(server, {
+    timeout: 30000, // 30 seconds
+    logger: (message: string) => logger.info(message),
+  });
+
+  logger.info('Application instance ready');
 })();

@@ -1,10 +1,12 @@
 import { Server as HTTPServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { Repository, Analysis, User } from './db';
+import { createWebSocketAdapter } from './websocketAdapter';
+import { logger } from './instanceId';
 
 export class WebSocketService {
   private io: SocketIOServer;
-  private userSockets: Map<string, string> = new Map(); // userId -> socketId
+  private isInitialized = false;
 
   constructor(server: HTTPServer) {
     this.io = new SocketIOServer(server, {
@@ -16,19 +18,39 @@ export class WebSocketService {
       }
     });
 
-    this.setupSocketHandlers();
+    // Initialize adapter and handlers asynchronously
+    this.initialize();
+  }
+
+  private async initialize() {
+    try {
+      // Set up Redis adapter for multi-instance support
+      const adapter = await createWebSocketAdapter();
+      if (adapter) {
+        this.io.adapter(adapter);
+        logger.info('WebSocket: Multi-instance support enabled');
+      }
+
+      this.setupSocketHandlers();
+      this.isInitialized = true;
+      logger.info('WebSocket: Service initialized');
+    } catch (error) {
+      logger.error('WebSocket: Initialization error', error);
+      // Continue with in-memory adapter
+      this.setupSocketHandlers();
+      this.isInitialized = true;
+    }
   }
 
   private setupSocketHandlers() {
     this.io.on('connection', (socket) => {
-      console.log(`Socket connected: ${socket.id}`);
+      logger.info(`Socket connected: ${socket.id}`);
 
       // Authentication
       socket.on('authenticate', (userId: string) => {
         if (userId) {
-          this.userSockets.set(userId, socket.id);
           socket.join(`user:${userId}`);
-          console.log(`User ${userId} authenticated with socket ${socket.id}`);
+          logger.info(`User ${userId} authenticated with socket ${socket.id}`);
           
           // Send initial connection confirmation
           socket.emit('authenticated', { userId, socketId: socket.id });
@@ -38,18 +60,18 @@ export class WebSocketService {
       // Repository tracking
       socket.on('track_repository', (repositoryId: string) => {
         socket.join(`repository:${repositoryId}`);
-        console.log(`Socket ${socket.id} tracking repository ${repositoryId}`);
+        logger.debug(`Socket ${socket.id} tracking repository ${repositoryId}`);
       });
 
       socket.on('untrack_repository', (repositoryId: string) => {
         socket.leave(`repository:${repositoryId}`);
-        console.log(`Socket ${socket.id} stopped tracking repository ${repositoryId}`);
+        logger.debug(`Socket ${socket.id} stopped tracking repository ${repositoryId}`);
       });
 
       // Analysis tracking
       socket.on('track_analysis', (analysisId: string) => {
         socket.join(`analysis:${analysisId}`);
-        console.log(`Socket ${socket.id} tracking analysis ${analysisId}`);
+        logger.debug(`Socket ${socket.id} tracking analysis ${analysisId}`);
       });
 
       // Heartbeat for connection health
@@ -59,14 +81,7 @@ export class WebSocketService {
 
       // Disconnect handling
       socket.on('disconnect', () => {
-        console.log(`Socket disconnected: ${socket.id}`);
-        // Remove user mapping
-        for (const [userId, socketId] of this.userSockets.entries()) {
-          if (socketId === socket.id) {
-            this.userSockets.delete(userId);
-            break;
-          }
-        }
+        logger.info(`Socket disconnected: ${socket.id}`);
       });
     });
   }
@@ -145,12 +160,40 @@ export class WebSocketService {
     });
   }
 
-  // Get connection status
-  getConnectedUsers(): string[] {
-    return Array.from(this.userSockets.keys());
+  // Get connection status (works across instances with Redis adapter)
+  async getConnectedUsers(): Promise<string[]> {
+    try {
+      const rooms = await this.io.in('user:').allSockets();
+      return Array.from(rooms)
+        .filter(room => room.startsWith('user:'))
+        .map(room => room.replace('user:', ''));
+    } catch (error) {
+      logger.error('Error getting connected users', error);
+      return [];
+    }
   }
 
-  isUserConnected(userId: string): boolean {
-    return this.userSockets.has(userId);
+  async isUserConnected(userId: string): Promise<boolean> {
+    try {
+      const sockets = await this.io.in(`user:${userId}`).allSockets();
+      return sockets.size > 0;
+    } catch (error) {
+      logger.error('Error checking user connection', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get Socket.IO server instance
+   */
+  getIO(): SocketIOServer {
+    return this.io;
+  }
+
+  /**
+   * Check if service is initialized
+   */
+  isReady(): boolean {
+    return this.isInitialized;
   }
 }

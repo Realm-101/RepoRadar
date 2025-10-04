@@ -162,7 +162,6 @@ export class AnalyticsService {
   private batchInterval: number;
   private batchTimer: NodeJS.Timeout | null = null;
   private enableAnonymization: boolean;
-  private optedOutSessions: Set<string> = new Set();
 
   constructor(options: AnalyticsServiceOptions = {}) {
     this.batchSize = options.batchSize || 50;
@@ -182,7 +181,7 @@ export class AnalyticsService {
     sessionId: string;
   }): Promise<void> {
     // Check if session has opted out
-    if (this.optedOutSessions.has(event.sessionId)) {
+    if (await this.hasOptedOut(event.sessionId)) {
       return;
     }
 
@@ -252,22 +251,51 @@ export class AnalyticsService {
   /**
    * Opt out a session from analytics tracking
    */
-  optOut(sessionId: string): void {
-    this.optedOutSessions.add(sessionId);
+  async optOut(sessionId: string): Promise<void> {
+    try {
+      const { redisManager } = await import('./redis');
+      if (redisManager.isConnected()) {
+        const client = await redisManager.getClient();
+        await client.set(`analytics:optout:${sessionId}`, '1', {
+          EX: 60 * 60 * 24 * 365, // 1 year
+        });
+      }
+    } catch (error) {
+      console.error('Error setting opt-out preference:', error);
+    }
   }
 
   /**
    * Opt in a session to analytics tracking
    */
-  optIn(sessionId: string): void {
-    this.optedOutSessions.delete(sessionId);
+  async optIn(sessionId: string): Promise<void> {
+    try {
+      const { redisManager } = await import('./redis');
+      if (redisManager.isConnected()) {
+        const client = await redisManager.getClient();
+        await client.del(`analytics:optout:${sessionId}`);
+      }
+    } catch (error) {
+      console.error('Error removing opt-out preference:', error);
+    }
   }
 
   /**
    * Check if a session has opted out
    */
-  hasOptedOut(sessionId: string): boolean {
-    return this.optedOutSessions.has(sessionId);
+  async hasOptedOut(sessionId: string): Promise<boolean> {
+    try {
+      const { redisManager } = await import('./redis');
+      if (redisManager.isConnected()) {
+        const client = await redisManager.getClient();
+        const result = await client.get(`analytics:optout:${sessionId}`);
+        return result === '1';
+      }
+      return false;
+    } catch (error) {
+      console.error('Error checking opt-out preference:', error);
+      return false;
+    }
   }
 
   /**
