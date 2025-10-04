@@ -27,6 +27,11 @@ import { getGlobalPerformanceMonitor } from "./performance/index.js";
 import { analyticsMiddleware, trackEvent } from "./middleware/analytics";
 import { analyticsService } from "./analytics";
 import { createAdminRouter } from "./admin";
+import { 
+  featureFlagsMiddleware, 
+  getFeatureFlagsHandler, 
+  updateFeatureFlagHandler 
+} from "./middleware/featureFlags";
 
 interface AuthenticatedRequest extends Request {
   user: {
@@ -180,6 +185,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Admin dashboard API
   app.use('/api/admin', createAdminRouter());
+
+  // Feature flags API
+  app.use(featureFlagsMiddleware);
+  app.get('/api/feature-flags', getFeatureFlagsHandler);
+  app.put('/api/feature-flags/:flagName', updateFeatureFlagHandler);
 
   // Job status API
   const { createJobRouter } = await import('./jobs/jobRoutes');

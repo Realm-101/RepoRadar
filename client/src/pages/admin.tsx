@@ -12,6 +12,7 @@ import { UserActivity } from '@/components/admin/user-activity';
 import { TimeSeriesChart } from '@/components/admin/time-series-chart';
 import { LogViewer } from '@/components/admin/log-viewer';
 import { DataExport } from '@/components/admin/data-export';
+import { FeatureFlagsAdmin } from '@/components/admin/feature-flags';
 import { useLoadingState } from '@/hooks/useLoadingState';
 import { SkeletonLoader } from '@/components/skeleton-loader';
 
@@ -139,13 +140,14 @@ export default function AdminDashboard() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="system">System</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
           <TabsTrigger value="logs">Logs</TabsTrigger>
           <TabsTrigger value="export">Export</TabsTrigger>
+          <TabsTrigger value="flags">Flags</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -174,6 +176,10 @@ export default function AdminDashboard() {
 
         <TabsContent value="export" className="space-y-6">
           <DataExport adminToken={adminToken} />
+        </TabsContent>
+
+        <TabsContent value="flags" className="space-y-6">
+          <FeatureFlagsAdmin />
         </TabsContent>
       </Tabs>
     </div>
