@@ -11,11 +11,30 @@ class RedisConnectionManager {
   private reconnectAttempts = 0;
   private readonly maxReconnectAttempts = 10;
   private readonly reconnectDelay = 1000; // 1 second
+  private readonly isEnabled: boolean;
+
+  constructor() {
+    // Check if Redis is enabled via environment variables
+    this.isEnabled = process.env.USE_REDIS_SESSIONS === 'true' || 
+                     process.env.REDIS_ENABLED === 'true' ||
+                     (process.env.NODE_ENV === 'production' && !process.env.REDIS_DISABLED);
+  }
+
+  /**
+   * Check if Redis is enabled
+   */
+  isRedisEnabled(): boolean {
+    return this.isEnabled;
+  }
 
   /**
    * Get or create Redis client
    */
   async getClient(): Promise<RedisClientType> {
+    if (!this.isEnabled) {
+      throw new Error('Redis is disabled in configuration');
+    }
+
     if (this.client && this.client.isOpen) {
       return this.client;
     }
@@ -103,7 +122,7 @@ class RedisConnectionManager {
    * Check if Redis is connected
    */
   isConnected(): boolean {
-    return this.client !== null && this.client.isOpen;
+    return this.isEnabled && this.client !== null && this.client.isOpen;
   }
 
   /**

@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import { ThemeProvider } from "@/contexts/theme-context";
+import { NeonAuthProvider } from "@/contexts/neon-auth-context";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import Home from "@/pages/home";
@@ -82,14 +83,16 @@ function App() {
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <SkipLink />
-          <KeyboardShortcutsDialog />
-          <Toaster />
-          <Router />
-          <AIAssistant />
-          <OnboardingTour />
-        </TooltipProvider>
+        <NeonAuthProvider>
+          <TooltipProvider>
+            <SkipLink />
+            <KeyboardShortcutsDialog />
+            <Toaster />
+            <Router />
+            <AIAssistant />
+            <OnboardingTour />
+          </TooltipProvider>
+        </NeonAuthProvider>
       </QueryClientProvider>
     </ThemeProvider>
   );

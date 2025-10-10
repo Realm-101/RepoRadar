@@ -1,7 +1,7 @@
 import { BaseJobProcessor } from '../JobProcessor';
 import type { Job } from '../Job';
 import { db } from '../../db';
-import { repositories, analyses, savedRepositories } from '@shared/schema';
+import { repositories, repositoryAnalyses, savedRepositories } from '@shared/schema';
 import { eq, and, gte, lte, desc } from 'drizzle-orm';
 import { AppError, ErrorCodes } from '@shared/errors';
 
@@ -106,36 +106,36 @@ export class ExportProcessor extends BaseJobProcessor<ExportJobData> {
     const conditions = [];
 
     if (userId) {
-      conditions.push(eq(analyses.userId, userId));
+      conditions.push(eq(repositoryAnalyses.userId, userId));
     }
 
     if (filters?.startDate) {
-      conditions.push(gte(analyses.analyzedAt, new Date(filters.startDate)));
+      conditions.push(gte(repositoryAnalyses.createdAt, new Date(filters.startDate)));
     }
 
     if (filters?.endDate) {
-      conditions.push(lte(analyses.analyzedAt, new Date(filters.endDate)));
+      conditions.push(lte(repositoryAnalyses.createdAt, new Date(filters.endDate)));
     }
 
     const query = db
       .select({
-        id: analyses.id,
-        repositoryId: analyses.repositoryId,
+        id: repositoryAnalyses.id,
+        repositoryId: repositoryAnalyses.repositoryId,
         repositoryName: repositories.fullName,
         language: repositories.language,
         stars: repositories.stars,
-        overallScore: analyses.overallScore,
-        originality: analyses.originality,
-        completeness: analyses.completeness,
-        marketability: analyses.marketability,
-        monetization: analyses.monetization,
-        usefulness: analyses.usefulness,
-        summary: analyses.summary,
-        analyzedAt: analyses.analyzedAt,
+        overallScore: repositoryAnalyses.overallScore,
+        originality: repositoryAnalyses.originality,
+        completeness: repositoryAnalyses.completeness,
+        marketability: repositoryAnalyses.marketability,
+        monetization: repositoryAnalyses.monetization,
+        usefulness: repositoryAnalyses.usefulness,
+        summary: repositoryAnalyses.summary,
+        analyzedAt: repositoryAnalyses.createdAt,
       })
-      .from(analyses)
-      .leftJoin(repositories, eq(analyses.repositoryId, repositories.id))
-      .orderBy(desc(analyses.analyzedAt))
+      .from(repositoryAnalyses)
+      .leftJoin(repositories, eq(repositoryAnalyses.repositoryId, repositories.id))
+      .orderBy(desc(repositoryAnalyses.createdAt))
       .limit(10000); // Limit to prevent excessive memory usage
 
     if (conditions.length > 0) {
@@ -198,13 +198,12 @@ export class ExportProcessor extends BaseJobProcessor<ExportJobData> {
         description: repositories.description,
         language: repositories.language,
         stars: repositories.stars,
-        notes: savedRepositories.notes,
-        savedAt: savedRepositories.savedAt,
+        createdAt: savedRepositories.createdAt,
       })
       .from(savedRepositories)
       .leftJoin(repositories, eq(savedRepositories.repositoryId, repositories.id))
       .where(eq(savedRepositories.userId, userId))
-      .orderBy(desc(savedRepositories.savedAt))
+      .orderBy(desc(savedRepositories.createdAt))
       .limit(10000);
   }
 

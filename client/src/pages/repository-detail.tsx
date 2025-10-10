@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Star, GitFork, Eye, Github, Bookmark, Scale, Search, ExternalLink, AlertTriangle, Brain, MessageSquare } from "lucide-react";
 
 export default function RepositoryDetail() {
   const { id } = useParams<{ id: string }>();
@@ -119,7 +120,7 @@ export default function RepositoryDetail() {
         <Header />
         <div className="max-w-6xl mx-auto px-6 py-16 text-center">
           <div className="w-16 h-16 rounded-full bg-gradient-to-r from-secondary to-accent flex items-center justify-center mx-auto mb-4">
-            <i className="fas fa-exclamation-triangle text-white text-2xl"></i>
+            <AlertTriangle className="text-white" size={32} />
           </div>
           <h1 className="text-3xl font-bold mb-4">Repository Not Found</h1>
           <p className="text-gray-400 mb-6">
@@ -150,7 +151,7 @@ export default function RepositoryDetail() {
             <div className="flex items-start justify-between mb-6">
               <div className="flex items-center space-x-4">
                 <div className="w-16 h-16 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
-                  <i className="fab fa-github text-white text-2xl"></i>
+                  <Github className="text-white" size={32} />
                 </div>
                 <div>
                   <h1 className="text-3xl font-bold gradient-text" data-testid="text-repository-name">
@@ -160,17 +161,20 @@ export default function RepositoryDetail() {
                     {repository.description || 'No description available'}
                   </p>
                   <div className="flex items-center space-x-4 mt-2 text-sm">
-                    <div className="flex items-center space-x-1">
-                      <i className="fas fa-star text-yellow-500"></i>
-                      <span data-testid="text-stars">{repository.stars?.toLocaleString()}</span>
+                    <div className="flex items-center space-x-1.5" title="Stars">
+                      <Star className="text-yellow-500" size={16} fill="currentColor" />
+                      <span className="text-gray-300" data-testid="text-stars">{repository.stars?.toLocaleString()}</span>
+                      <span className="text-gray-500 text-xs">stars</span>
                     </div>
-                    <div className="flex items-center space-x-1">
-                      <i className="fas fa-code-branch text-gray-400"></i>
-                      <span data-testid="text-forks">{repository.forks?.toLocaleString()}</span>
+                    <div className="flex items-center space-x-1.5" title="Forks">
+                      <GitFork className="text-gray-400" size={16} />
+                      <span className="text-gray-300" data-testid="text-forks">{repository.forks?.toLocaleString()}</span>
+                      <span className="text-gray-500 text-xs">forks</span>
                     </div>
-                    <div className="flex items-center space-x-1">
-                      <i className="fas fa-eye text-gray-400"></i>
-                      <span data-testid="text-watchers">{repository.watchers?.toLocaleString()}</span>
+                    <div className="flex items-center space-x-1.5" title="Watchers">
+                      <Eye className="text-gray-400" size={16} />
+                      <span className="text-gray-300" data-testid="text-watchers">{repository.watchers?.toLocaleString()}</span>
+                      <span className="text-gray-500 text-xs">watchers</span>
                     </div>
                   </div>
                 </div>
@@ -184,7 +188,7 @@ export default function RepositoryDetail() {
                   data-testid="button-save-repository"
                   data-tour="track-button"
                 >
-                  <i className={`fas fa-bookmark ${isSaved ? 'text-primary' : 'text-gray-400'} mr-2`}></i>
+                  <Bookmark className={`${isSaved ? 'text-primary' : 'text-gray-400'} mr-2`} size={16} fill={isSaved ? 'currentColor' : 'none'} />
                   {isSaved ? 'Saved' : 'Save'}
                 </Button>
                 {user && (
@@ -200,7 +204,7 @@ export default function RepositoryDetail() {
                   className="border-2 border-border hover:border-primary transition-colors"
                   data-testid="button-compare"
                 >
-                  <i className="fas fa-balance-scale text-gray-400 mr-2"></i>
+                  <Scale className="text-gray-400 mr-2" size={16} />
                   Compare
                 </Button>
                 <Button
@@ -209,7 +213,7 @@ export default function RepositoryDetail() {
                   className="border-2 border-border hover:border-primary transition-colors"
                   data-testid="button-find-similar"
                 >
-                  <i className="fas fa-search text-gray-400 mr-2"></i>
+                  <Search className="text-gray-400 mr-2" size={16} />
                   Find Similar
                 </Button>
                 <Button
@@ -217,7 +221,7 @@ export default function RepositoryDetail() {
                   className="bg-gradient-to-r from-primary to-secondary hover:from-secondary hover:to-primary"
                   data-testid="button-view-github"
                 >
-                  <i className="fab fa-github mr-2"></i>
+                  <ExternalLink className="mr-2" size={16} />
                   View on GitHub
                 </Button>
               </div>
@@ -228,19 +232,22 @@ export default function RepositoryDetail() {
               <div className="mb-6">
                 <h3 className="text-lg font-semibold mb-3">Technology Stack</h3>
                 <div className="flex flex-wrap gap-2">
-                  {Object.entries(repository.languages)
-                    .sort(([,a], [,b]) => (b as number) - (a as number))
-                    .slice(0, 8)
-                    .map(([language, percentage]) => (
-                      <Badge
-                        key={language}
-                        variant="secondary"
-                        className="bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                        data-testid={`badge-language-${language}`}
-                      >
-                        {language} ({((percentage as number) / 1000).toFixed(1)}%)
-                      </Badge>
-                    ))}
+                  {(() => {
+                    const total = Object.values(repository.languages).reduce((sum: number, val) => sum + (val as number), 0);
+                    return Object.entries(repository.languages)
+                      .sort(([,a], [,b]) => (b as number) - (a as number))
+                      .slice(0, 8)
+                      .map(([language, bytes]) => (
+                        <Badge
+                          key={language}
+                          variant="secondary"
+                          className="bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                          data-testid={`badge-language-${language}`}
+                        >
+                          {language} ({(((bytes as number) / total) * 100).toFixed(1)}%)
+                        </Badge>
+                      ));
+                  })()}
                 </div>
               </div>
             )}
@@ -283,7 +290,7 @@ export default function RepositoryDetail() {
           <Card className="bg-card border border-border mb-8">
             <CardContent className="p-8 text-center">
               <div className="w-16 h-16 rounded-full bg-gradient-to-r from-primary to-secondary flex items-center justify-center mx-auto mb-4">
-                <i className="fas fa-brain text-white text-2xl"></i>
+                <Brain className="text-white" size={32} />
               </div>
               <h3 className="text-2xl font-bold mb-2">No Analysis Available</h3>
               <p className="text-gray-400 mb-6">
@@ -297,7 +304,7 @@ export default function RepositoryDetail() {
                 className="bg-gradient-to-r from-primary to-secondary hover:from-secondary hover:to-primary"
                 data-testid="button-analyze"
               >
-                <i className="fas fa-brain mr-2"></i>
+                <Brain className="mr-2" size={16} />
                 Analyze Repository
               </Button>
             </CardContent>
@@ -310,11 +317,11 @@ export default function RepositoryDetail() {
             <Tabs defaultValue="comments" className="w-full">
               <TabsList className="grid w-full grid-cols-2 bg-dark/50">
                 <TabsTrigger value="comments" className="data-[state=active]:bg-primary/20">
-                  <i className="fas fa-comments mr-2"></i>
+                  <MessageSquare className="mr-2" size={16} />
                   Comments
                 </TabsTrigger>
                 <TabsTrigger value="ratings" className="data-[state=active]:bg-primary/20">
-                  <i className="fas fa-star mr-2"></i>
+                  <Star className="mr-2" size={16} />
                   Ratings
                 </TabsTrigger>
               </TabsList>
@@ -345,7 +352,7 @@ export default function RepositoryDetail() {
                     >
                       <div className="flex items-center space-x-3 mb-3">
                         <div className="w-8 h-8 rounded-lg bg-gradient-to-r from-green-500 to-teal-600 flex items-center justify-center">
-                          <i className="fab fa-github text-white text-sm"></i>
+                          <Github className="text-white" size={16} />
                         </div>
                         <div>
                           <h4 className="font-medium" data-testid={`text-similar-name-${similarRepo.id}`}>

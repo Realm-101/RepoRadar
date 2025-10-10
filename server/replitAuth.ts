@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import * as client from "openid-client";
 import { Strategy, type VerifyFunction } from "openid-client/passport";
 
@@ -9,8 +12,16 @@ import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
 import { createSessionStore, getSessionConfig } from "./sessionStore.js";
 
-if (!process.env.REPLIT_DOMAINS) {
+if (!process.env.REPLIT_DOMAINS && process.env.NODE_ENV === 'production') {
   throw new Error("Environment variable REPLIT_DOMAINS not provided");
+}
+
+// Set default values for development
+if (!process.env.REPLIT_DOMAINS) {
+  process.env.REPLIT_DOMAINS = 'localhost:3000,127.0.0.1:3000';
+}
+if (!process.env.REPL_ID) {
+  process.env.REPL_ID = 'dummy-repl-id';
 }
 
 const getOidcConfig = memoize(
@@ -113,14 +124,18 @@ export async function setupAuth(app: Express) {
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
   app.get("/api/login", (req, res, next) => {
-    passport.authenticate(`replitauth:${req.hostname}`, {
+    // Use the first domain from REPLIT_DOMAINS for development
+    const domain = process.env.REPLIT_DOMAINS!.split(",")[0];
+    passport.authenticate(`replitauth:${domain}`, {
       prompt: "login consent",
       scope: ["openid", "email", "profile", "offline_access"],
     })(req, res, next);
   });
 
   app.get("/api/callback", (req, res, next) => {
-    passport.authenticate(`replitauth:${req.hostname}`, {
+    // Use the first domain from REPLIT_DOMAINS for development
+    const domain = process.env.REPLIT_DOMAINS!.split(",")[0];
+    passport.authenticate(`replitauth:${domain}`, {
       successReturnToOrRedirect: "/",
       failureRedirect: "/api/login",
     })(req, res, next);

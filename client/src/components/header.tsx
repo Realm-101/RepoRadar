@@ -43,11 +43,9 @@ const ListItem = React.forwardRef<
 ListItem.displayName = "ListItem";
 
 export default function Header() {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, login } = useAuth();
 
-  const displayName = user?.firstName && user?.lastName 
-    ? `${user.firstName} ${user.lastName}` 
-    : user?.firstName || user?.email?.split('@')[0] || 'User';
+  const displayName = user?.name || user?.email?.split('@')[0] || 'User';
 
   return (
     <header className="bg-card border-b border-border" role="banner">
@@ -254,7 +252,7 @@ export default function Header() {
               </div>
             ) : (
               <Button
-                onClick={() => window.location.href = '/api/login'}
+                onClick={login}
                 className="bg-gradient-to-r from-primary to-secondary hover:from-secondary hover:to-primary text-white button-hover hover-shine button-scale touch-target focus-ring"
                 data-testid="button-login"
                 data-tour="profile-nav"

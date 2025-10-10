@@ -79,9 +79,10 @@ export const repositoryAnalyses = pgTable("repository_analyses", {
   usefulness: real("usefulness").notNull(),
   overallScore: real("overall_score").notNull(),
   summary: text("summary").notNull(),
-  strengths: text("strengths").array(),
-  weaknesses: text("weaknesses").array(),
-  recommendations: text("recommendations").array(),
+  strengths: jsonb("strengths"),
+  weaknesses: jsonb("weaknesses"),
+  recommendations: jsonb("recommendations"),
+  scoreExplanations: jsonb("score_explanations"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

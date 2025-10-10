@@ -11,12 +11,10 @@ import { useIsMobile } from "@/hooks/use-mobile";
 export function MobileNav() {
   const [isOpen, setIsOpen] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, login } = useAuth();
   const isMobile = useIsMobile();
 
-  const displayName = user?.firstName && user?.lastName 
-    ? `${user.firstName} ${user.lastName}` 
-    : user?.firstName || user?.email?.split('@')[0] || 'User';
+  const displayName = user?.name || user?.email?.split('@')[0] || 'User';
 
   // Close menu when route changes or screen size changes
   useEffect(() => {
@@ -126,7 +124,7 @@ export function MobileNav() {
             <Button
               onClick={() => {
                 closeMenu();
-                window.location.href = '/api/login';
+                login();
               }}
               className="w-full mb-6 bg-gradient-to-r from-primary to-secondary hover:from-secondary hover:to-primary touch-target focus-ring"
               aria-label="Sign in to your account"

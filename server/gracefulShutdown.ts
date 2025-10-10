@@ -131,11 +131,17 @@ class GracefulShutdownHandler {
     try {
       logger('Closing Redis connection...');
       const { redisManager } = await import('./redis');
+      
+      if (!redisManager.isRedisEnabled()) {
+        logger('Redis is disabled, skipping disconnect');
+        return;
+      }
+      
       await redisManager.disconnect();
       logger('Redis connection closed');
     } catch (error) {
       logger(`Error closing Redis: ${error}`);
-      throw error;
+      // Don't throw error to prevent shutdown failure
     }
   }
 
@@ -150,7 +156,7 @@ class GracefulShutdownHandler {
       logger('Job queue closed');
     } catch (error) {
       logger(`Error closing job queue: ${error}`);
-      throw error;
+      // Don't throw error to prevent shutdown failure
     }
   }
 

@@ -1,3 +1,5 @@
+import dotenv from 'dotenv';
+dotenv.config();
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
@@ -68,11 +70,13 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
+  
+  // Set server timeout to 5 minutes for long-running AI analysis
+  server.timeout = 300000; // 5 minutes (300 seconds)
+  server.keepAliveTimeout = 305000; // Slightly longer than timeout
+  server.headersTimeout = 310000; // Slightly longer than keepAliveTimeout
+  
+  server.listen(port, () => {
     logger.info(`Server listening on port ${port}`);
     log(`serving on port ${port}`);
   });

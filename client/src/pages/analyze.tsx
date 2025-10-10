@@ -43,8 +43,9 @@ export default function Analyze() {
       console.log('Mutation starting for URL:', repositoryUrl);
       setIsAnalyzing(true);
       const response = await apiRequest('POST', '/api/repositories/analyze', { url: repositoryUrl });
-      console.log('API Response received:', response);
-      return response;
+      const data = await response.json();
+      console.log('API Response received:', data);
+      return data;
     },
     onSuccess: (data: any) => {
       console.log('Analysis SUCCESS - data received:', data);
@@ -61,7 +62,47 @@ export default function Analyze() {
       }
       
       console.log('Setting analysis state...');
-      setAnalysis(data);
+      console.log('Analysis object:', data.analysis);
+      
+      // Ensure we have valid analysis data
+      const analysisData = data.analysis || {};
+      
+      // Validate that we have the required fields
+      if (!analysisData.summary || !analysisData.strengths || !analysisData.recommendations) {
+        console.warn('Analysis data is missing required fields:', {
+          hasSummary: !!analysisData.summary,
+          hasStrengths: !!analysisData.strengths,
+          hasRecommendations: !!analysisData.recommendations
+        });
+      }
+      
+      // Flatten the data structure - spread analysis properties to top level
+      const flattenedData = {
+        repository: data.repository,
+        similar: data.similar,
+        // Spread all analysis properties to top level for easier access
+        originality: analysisData.originality || 0,
+        completeness: analysisData.completeness || 0,
+        marketability: analysisData.marketability || 0,
+        monetization: analysisData.monetization || 0,
+        usefulness: analysisData.usefulness || 0,
+        overallScore: analysisData.overallScore || 0,
+        summary: analysisData.summary || 'No summary available',
+        strengths: analysisData.strengths || [],
+        weaknesses: analysisData.weaknesses || [],
+        recommendations: analysisData.recommendations || [],
+        scoreExplanations: analysisData.scoreExplanations || {},
+        // Keep original analysis object for components that expect it
+        analysis: analysisData,
+      };
+      
+      console.log('Flattened data:', {
+        hasStrengths: flattenedData.strengths?.length,
+        hasWeaknesses: flattenedData.weaknesses?.length,
+        hasRecommendations: flattenedData.recommendations?.length
+      });
+      
+      setAnalysis(flattenedData);
       setIsAnalyzing(false);
       setIsSaved(data.isSaved || false);
       toast({
@@ -74,7 +115,7 @@ export default function Analyze() {
         repositoryName: data.repository?.fullName,
         language: data.repository?.language,
         stars: data.repository?.stars,
-        overallScore: data.overallScore,
+        overallScore: flattenedData.overallScore,
       });
     },
     onError: (error: Error) => {

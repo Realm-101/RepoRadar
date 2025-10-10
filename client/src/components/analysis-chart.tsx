@@ -64,12 +64,13 @@ export function LanguageDistributionChart({ languages }: { languages: any }) {
           <BarChart data={dataWithPercentage}>
             <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
             <XAxis dataKey="name" stroke="#9CA3AF" />
-            <YAxis stroke="#9CA3AF" />
+            <YAxis stroke="#9CA3AF" label={{ value: 'Percentage (%)', angle: -90, position: 'insideLeft', style: { fill: '#9CA3AF' } }} />
             <Tooltip 
               contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }}
               labelStyle={{ color: '#9CA3AF' }}
+              formatter={(value: any) => [`${value}%`, 'Percentage']}
             />
-            <Bar dataKey="value" fill="#FF3333" radius={[8, 8, 0, 0]} />
+            <Bar dataKey="percentage" fill="#FF3333" radius={[8, 8, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </CardContent>

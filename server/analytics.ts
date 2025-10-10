@@ -254,7 +254,7 @@ export class AnalyticsService {
   async optOut(sessionId: string): Promise<void> {
     try {
       const { redisManager } = await import('./redis');
-      if (redisManager.isConnected()) {
+      if (redisManager.isRedisEnabled() && redisManager.isConnected()) {
         const client = await redisManager.getClient();
         await client.set(`analytics:optout:${sessionId}`, '1', {
           EX: 60 * 60 * 24 * 365, // 1 year
@@ -271,7 +271,7 @@ export class AnalyticsService {
   async optIn(sessionId: string): Promise<void> {
     try {
       const { redisManager } = await import('./redis');
-      if (redisManager.isConnected()) {
+      if (redisManager.isRedisEnabled() && redisManager.isConnected()) {
         const client = await redisManager.getClient();
         await client.del(`analytics:optout:${sessionId}`);
       }
@@ -286,7 +286,7 @@ export class AnalyticsService {
   async hasOptedOut(sessionId: string): Promise<boolean> {
     try {
       const { redisManager } = await import('./redis');
-      if (redisManager.isConnected()) {
+      if (redisManager.isRedisEnabled() && redisManager.isConnected()) {
         const client = await redisManager.getClient();
         const result = await client.get(`analytics:optout:${sessionId}`);
         return result === '1';

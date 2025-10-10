@@ -17,16 +17,31 @@ export class JobQueue {
   private isInitialized = false;
 
   constructor(private queueName: string = 'default') {
-    // Initialize queue and events (connection will be established lazily)
-    this.queue = new Queue(queueName, {
-      connection: this.getRedisConnection(),
-    });
+    // Only initialize queue if Redis is enabled
+    if (redisManager.isRedisEnabled()) {
+      // Initialize queue and events (connection will be established lazily)
+      this.queue = new Queue(queueName, {
+        connection: this.getRedisConnection(),
+      });
 
-    this.queueEvents = new QueueEvents(queueName, {
-      connection: this.getRedisConnection(),
-    });
+      this.queueEvents = new QueueEvents(queueName, {
+        connection: this.getRedisConnection(),
+      });
 
-    this.setupEventHandlers();
+      this.setupEventHandlers();
+    } else {
+      console.log('JobQueue: Redis is disabled, job queue will not be available');
+      // Create dummy objects to prevent null reference errors
+      this.queue = null as any;
+      this.queueEvents = null as any;
+    }
+  }
+
+  /**
+   * Check if job queue is available (Redis enabled)
+   */
+  private isQueueAvailable(): boolean {
+    return redisManager.isRedisEnabled() && this.queue !== null;
   }
 
   /**
@@ -68,8 +83,19 @@ export class JobQueue {
       return;
     }
 
+    // Check if Redis is enabled
+    if (!redisManager.isRedisEnabled()) {
+      console.log('Redis is disabled - job queue will not be available');
+      return;
+    }
+
     // Ensure Redis is connected
-    await redisManager.getClient();
+    try {
+      await redisManager.getClient();
+    } catch (error) {
+      console.error('Failed to connect to Redis for job queue:', error);
+      return;
+    }
 
     // Create worker to process jobs
     this.worker = new Worker(
@@ -107,6 +133,10 @@ export class JobQueue {
    * Add a job to the queue
    */
   async addJob<T>(jobType: string, data: T, options: JobOptions = {}): Promise<Job<T>> {
+    if (!this.isQueueAvailable()) {
+      throw new Error('Job queue is not available (Redis disabled)');
+    }
+
     const job = new Job<T>(jobType, data, options);
 
     // Add to BullMQ queue

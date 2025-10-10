@@ -1,7 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Landing() {
+  const { login } = useAuth();
   return (
     <div className="min-h-screen bg-dark text-white">
       {/* Hero Section */}
@@ -28,7 +30,7 @@ export default function Landing() {
           
           <div className="flex items-center justify-center space-x-6 mb-16">
             <Button
-              onClick={() => window.location.href = '/api/login'}
+              onClick={login}
               className="bg-gradient-to-r from-primary to-secondary hover:from-secondary hover:to-primary text-white px-12 py-4 rounded-xl text-lg font-semibold transition-all duration-300 neon-glow"
               data-testid="button-login"
             >
@@ -179,7 +181,7 @@ export default function Landing() {
             Join thousands of developers making smarter repository decisions
           </p>
           <Button
-            onClick={() => window.location.href = '/api/login'}
+            onClick={login}
             className="bg-gradient-to-r from-primary to-secondary hover:from-secondary hover:to-primary text-white px-12 py-4 rounded-xl text-lg font-semibold transition-all duration-300 neon-glow"
             data-testid="button-get-started"
           >

@@ -1,5 +1,5 @@
 import session from 'express-session';
-import RedisStore from 'connect-redis';
+import { RedisStore } from 'connect-redis';
 import { redisManager } from './redis.js';
 import crypto from 'crypto';
 

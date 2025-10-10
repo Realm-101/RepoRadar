@@ -37,6 +37,17 @@ export default function AnalysisResults({ analysis, repository }: AnalysisResult
 
   const handleExportPDF = async () => {
     try {
+      // Convert structured data to strings for export
+      const strengthsAsStrings = (analysis.strengths || []).map((s: any) => 
+        typeof s === 'string' ? s : s.point
+      );
+      const weaknessesAsStrings = (analysis.weaknesses || []).map((w: any) => 
+        typeof w === 'string' ? w : w.point
+      );
+      const recommendationsAsStrings = (analysis.recommendations || []).map((r: any) => 
+        typeof r === 'string' ? r : r.suggestion
+      );
+      
       const exportData = {
         id: 'temp-id',
         repositoryId: repository?.full_name || 'unknown',
@@ -47,9 +58,9 @@ export default function AnalysisResults({ analysis, repository }: AnalysisResult
         usefulness: analysis.usefulness,
         overallScore: analysis.overallScore,
         summary: analysis.summary,
-        strengths: analysis.strengths,
-        weaknesses: analysis.weaknesses,
-        recommendations: analysis.recommendations,
+        strengths: strengthsAsStrings,
+        weaknesses: weaknessesAsStrings,
+        recommendations: recommendationsAsStrings,
         createdAt: new Date().toISOString(),
         repository,
         // For backward compatibility
@@ -59,7 +70,7 @@ export default function AnalysisResults({ analysis, repository }: AnalysisResult
         monetization_score: analysis.monetization * 10,
         usefulness_score: analysis.usefulness * 10,
         overall_score: analysis.overallScore,
-        key_findings: analysis.strengths,
+        key_findings: strengthsAsStrings,
       };
       
       await exportToPDF(exportData, 'analysis-results');
@@ -78,6 +89,17 @@ export default function AnalysisResults({ analysis, repository }: AnalysisResult
 
   const handleExportCSV = () => {
     try {
+      // Convert structured data to strings for export
+      const strengthsAsStrings = (analysis.strengths || []).map((s: any) => 
+        typeof s === 'string' ? s : s.point
+      );
+      const weaknessesAsStrings = (analysis.weaknesses || []).map((w: any) => 
+        typeof w === 'string' ? w : w.point
+      );
+      const recommendationsAsStrings = (analysis.recommendations || []).map((r: any) => 
+        typeof r === 'string' ? r : r.suggestion
+      );
+      
       const exportData = {
         id: 'temp-id',
         repositoryId: repository?.full_name || 'unknown',
@@ -88,9 +110,9 @@ export default function AnalysisResults({ analysis, repository }: AnalysisResult
         usefulness: analysis.usefulness,
         overallScore: analysis.overallScore,
         summary: analysis.summary,
-        strengths: analysis.strengths,
-        weaknesses: analysis.weaknesses,
-        recommendations: analysis.recommendations,
+        strengths: strengthsAsStrings,
+        weaknesses: weaknessesAsStrings,
+        recommendations: recommendationsAsStrings,
         createdAt: new Date().toISOString(),
         repository,
         // For backward compatibility
@@ -100,7 +122,7 @@ export default function AnalysisResults({ analysis, repository }: AnalysisResult
         monetization_score: analysis.monetization * 10,
         usefulness_score: analysis.usefulness * 10,
         overall_score: analysis.overallScore,
-        key_findings: analysis.strengths,
+        key_findings: strengthsAsStrings,
       };
       
       exportToCSV(exportData);
@@ -295,22 +317,28 @@ export default function AnalysisResults({ analysis, repository }: AnalysisResult
               Strengths
             </h3>
             <div className="space-y-2 md:space-y-3">
-              {analysis.strengths.map((strength, index: number) => (
-                <div 
-                  key={index}
-                  className="bg-dark rounded-lg p-3 border-l-4 border-green-400"
-                  data-testid={`strength-${index}`}
-                >
-                  <p className="text-sm text-gray-300 font-medium">
-                    {typeof strength === 'string' ? strength : strength.point}
-                  </p>
-                  {typeof strength === 'object' && strength.reason && (
-                    <p className="text-xs text-gray-400 mt-1 italic">
-                      {strength.reason}
+              {analysis.strengths && analysis.strengths.length > 0 ? (
+                analysis.strengths.map((strength, index: number) => (
+                  <div 
+                    key={index}
+                    className="bg-dark rounded-lg p-3 border-l-4 border-green-400"
+                    data-testid={`strength-${index}`}
+                  >
+                    <p className="text-sm text-gray-300 font-medium">
+                      {typeof strength === 'string' ? strength : strength.point}
                     </p>
-                  )}
+                    {typeof strength === 'object' && strength.reason && (
+                      <p className="text-xs text-gray-400 mt-1 italic">
+                        {strength.reason}
+                      </p>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="bg-dark rounded-lg p-4 border border-border text-center">
+                  <p className="text-sm text-gray-400">No strengths identified in this analysis.</p>
                 </div>
-              ))}
+              )}
             </div>
           </div>
 
@@ -321,22 +349,28 @@ export default function AnalysisResults({ analysis, repository }: AnalysisResult
               Areas for Improvement
             </h3>
             <div className="space-y-2 md:space-y-3">
-              {analysis.weaknesses.map((weakness, index: number) => (
-                <div 
-                  key={index}
-                  className="bg-dark rounded-lg p-3 border-l-4 border-red-400"
-                  data-testid={`weakness-${index}`}
-                >
-                  <p className="text-sm text-gray-300 font-medium">
-                    {typeof weakness === 'string' ? weakness : weakness.point}
-                  </p>
-                  {typeof weakness === 'object' && weakness.reason && (
-                    <p className="text-xs text-gray-400 mt-1 italic">
-                      {weakness.reason}
+              {analysis.weaknesses && analysis.weaknesses.length > 0 ? (
+                analysis.weaknesses.map((weakness, index: number) => (
+                  <div 
+                    key={index}
+                    className="bg-dark rounded-lg p-3 border-l-4 border-red-400"
+                    data-testid={`weakness-${index}`}
+                  >
+                    <p className="text-sm text-gray-300 font-medium">
+                      {typeof weakness === 'string' ? weakness : weakness.point}
                     </p>
-                  )}
+                    {typeof weakness === 'object' && weakness.reason && (
+                      <p className="text-xs text-gray-400 mt-1 italic">
+                        {weakness.reason}
+                      </p>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="bg-dark rounded-lg p-4 border border-border text-center">
+                  <p className="text-sm text-gray-400">No areas for improvement identified.</p>
                 </div>
-              ))}
+              )}
             </div>
           </div>
 
@@ -347,27 +381,33 @@ export default function AnalysisResults({ analysis, repository }: AnalysisResult
               Recommendations
             </h3>
             <div className="space-y-2 md:space-y-3">
-              {analysis.recommendations.map((recommendation, index: number) => (
-                <div 
-                  key={index}
-                  className="bg-dark rounded-lg p-3 border-l-4 border-primary"
-                  data-testid={`recommendation-${index}`}
-                >
-                  <p className="text-sm text-gray-300 font-medium">
-                    {typeof recommendation === 'string' ? recommendation : recommendation.suggestion}
-                  </p>
-                  {typeof recommendation === 'object' && recommendation.reason && (
-                    <p className="text-xs text-gray-400 mt-1 italic">
-                      <strong>Why:</strong> {recommendation.reason}
+              {analysis.recommendations && analysis.recommendations.length > 0 ? (
+                analysis.recommendations.map((recommendation, index: number) => (
+                  <div 
+                    key={index}
+                    className="bg-dark rounded-lg p-3 border-l-4 border-primary"
+                    data-testid={`recommendation-${index}`}
+                  >
+                    <p className="text-sm text-gray-300 font-medium">
+                      {typeof recommendation === 'string' ? recommendation : recommendation.suggestion}
                     </p>
-                  )}
-                  {typeof recommendation === 'object' && recommendation.impact && (
-                    <p className="text-xs text-green-400 mt-1 italic">
-                      <strong>Impact:</strong> {recommendation.impact}
-                    </p>
-                  )}
+                    {typeof recommendation === 'object' && recommendation.reason && (
+                      <p className="text-xs text-gray-400 mt-1 italic">
+                        <strong>Why:</strong> {recommendation.reason}
+                      </p>
+                    )}
+                    {typeof recommendation === 'object' && recommendation.impact && (
+                      <p className="text-xs text-green-400 mt-1 italic">
+                        <strong>Impact:</strong> {recommendation.impact}
+                      </p>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="bg-dark rounded-lg p-4 border border-border text-center">
+                  <p className="text-sm text-gray-400">No recommendations available for this analysis.</p>
                 </div>
-              ))}
+              )}
             </div>
           </div>
         </div>

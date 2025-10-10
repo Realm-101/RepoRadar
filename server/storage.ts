@@ -636,22 +636,7 @@ export class DatabaseStorage implements IStorage {
     return repoTag;
   }
 
-  // Collections operations
-  async getUserCollections(userId: string): Promise<Collection[]> {
-    return await db
-      .select()
-      .from(collections)
-      .where(eq(collections.userId, userId))
-      .orderBy(desc(collections.updatedAt));
-  }
-
-  async createCollection(userId: string, collection: Partial<InsertCollection>): Promise<Collection> {
-    const [newCollection] = await db
-      .insert(collections)
-      .values({ ...collection, userId } as InsertCollection)
-      .returning();
-    return newCollection;
-  }
+  // Collections operations (implementation moved below)
 
   async addToCollection(collectionId: number, repositoryId: string, notes?: string): Promise<CollectionItem> {
     const [maxPosition] = await db

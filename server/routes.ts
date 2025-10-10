@@ -4,7 +4,7 @@ import Stripe from "stripe";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated } from "./replitAuth";
+import { setupAuth, isAuthenticated } from "./neonAuth";
 import { githubService } from "./github";
 import { analyzeRepository, findSimilarRepositories, findSimilarByFunctionality, askAI, generateAIRecommendations } from "./gemini";
 import { insertRepositorySchema, insertAnalysisSchema, insertSavedRepositorySchema } from "@shared/schema";
@@ -49,6 +49,9 @@ interface AuthenticatedRequest extends Request {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Auth middleware - must be very early to avoid conflicts
+  await setupAuth(app);
+
   // Health check endpoints
   const { healthCheck, readinessCheck, livenessCheck } = await import('./health');
   app.get('/health', healthCheck);
@@ -180,8 +183,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Auth middleware
-  await setupAuth(app);
+  // Auth middleware already set up at the beginning
 
   // Admin dashboard API
   app.use('/api/admin', createAdminRouter());

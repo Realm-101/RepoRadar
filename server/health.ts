@@ -164,6 +164,14 @@ async function checkDatabase(): Promise<CheckResult> {
  */
 async function checkRedis(): Promise<CheckResult> {
   try {
+    if (!redisManager.isRedisEnabled()) {
+      return {
+        status: 'up',
+        responseTime: 0,
+        message: 'Redis is disabled',
+      };
+    }
+    
     const healthStatus = await redisManager.getHealthStatus();
     return healthStatus;
   } catch (error: any) {

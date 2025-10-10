@@ -1,6 +1,6 @@
 import { Server as HTTPServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
-import { Repository, Analysis, User } from './db';
+import { Repository, RepositoryAnalysis, User } from '@shared/schema';
 import { createWebSocketAdapter } from './websocketAdapter';
 import { logger } from './instanceId';
 

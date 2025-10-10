@@ -1,15 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
-import type { User } from "@shared/schema";
+import { useNeonAuth } from "@/contexts/neon-auth-context";
 
 export function useAuth() {
-  const { data: user, isLoading } = useQuery<User>({
-    queryKey: ["/api/auth/user"],
-    retry: false,
-  });
+  const { user, isLoading, isAuthenticated, login, logout } = useNeonAuth();
 
   return {
     user,
     isLoading,
-    isAuthenticated: !!user,
+    isAuthenticated,
+    login,
+    logout,
   };
 }
