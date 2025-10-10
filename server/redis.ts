@@ -59,9 +59,19 @@ class RedisConnectionManager {
     try {
       const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
       
+      // Check if using Upstash (rediss:// protocol)
+      const isUpstash = redisUrl.startsWith('rediss://');
+      
       const options: RedisClientOptions = {
         url: redisUrl,
         socket: {
+          // Increase timeout for Upstash connections
+          connectTimeout: 10000,
+          // Enable TLS for Upstash
+          ...(isUpstash && {
+            tls: true,
+            rejectUnauthorized: false, // Upstash uses self-signed certs
+          }),
           reconnectStrategy: (retries: number) => {
             if (retries > this.maxReconnectAttempts) {
               console.error('Redis: Max reconnection attempts reached');
@@ -75,6 +85,7 @@ class RedisConnectionManager {
         },
       };
 
+      console.log(`Redis: Connecting to ${isUpstash ? 'Upstash' : 'local'} Redis...`);
       this.client = createClient(options);
 
       // Set up event handlers

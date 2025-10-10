@@ -79,11 +79,11 @@ export async function createSessionStore(): Promise<session.Store> {
 
   try {
     console.log('Session Store: Initializing Redis store');
-    // Add timeout to Redis connection attempt
+    // Add timeout to Redis connection attempt (increased for Upstash)
     const redisClient = await Promise.race([
       redisManager.getClient(),
       new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Redis connection timeout')), 3000)
+        setTimeout(() => reject(new Error('Redis connection timeout')), 15000)
       )
     ]) as any;
     

@@ -11,26 +11,20 @@ interface NeonAuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: () => void;
+  login: (email: string, password: string) => Promise<void>;
+  signup: (email: string, password: string, name: string) => Promise<void>;
   logout: () => void;
 }
 
 const NeonAuthContext = createContext<NeonAuthContextType | undefined>(undefined);
 
-// Neon Auth configuration
-const projectId = import.meta.env.VITE_STACK_PROJECT_ID || '';
-const publishableKey = import.meta.env.VITE_STACK_PUBLISHABLE_KEY || '';
-
-if (!projectId || !publishableKey) {
-  console.warn('Neon Auth not configured. Please set VITE_STACK_PROJECT_ID and VITE_STACK_PUBLISHABLE_KEY environment variables.');
-}
-
+// Main auth provider
 export function NeonAuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is already authenticated by calling our backend
+    // Check if user is authenticated
     const checkAuth = async () => {
       try {
         const response = await fetch('/api/auth/user', {
@@ -53,30 +47,55 @@ export function NeonAuthProvider({ children }: { children: React.ReactNode }) {
     checkAuth();
   }, []);
 
-  const login = () => {
-    // For now, use demo mode since Neon Auth requires Next.js SDK or production domain
-    // TODO: Implement proper Neon Auth when deploying to production
-    console.log('Using demo login - configure Neon Auth properly for production');
-    window.location.href = '/auth/callback?demo=true';
+  const login = async (email: string, password: string) => {
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Login failed');
+    }
+
+    const userData = await response.json();
+    setUser(userData.user);
+  };
+
+  const signup = async (email: string, password: string, name: string) => {
+    const response = await fetch('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ email, password, name }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Signup failed');
+    }
+
+    const userData = await response.json();
+    setUser(userData.user);
   };
 
   const logout = async () => {
     try {
-      setUser(null);
-      
-      // Call backend logout
       await fetch('/api/auth/logout', {
         method: 'POST',
         credentials: 'include',
       });
       
-      // Redirect to home page
-      window.location.href = '/';
+      setUser(null);
+      sessionStorage.removeItem('splashSeen');
+      window.location.href = '/landing';
     } catch (error) {
       console.error('Logout error:', error);
-      // Force logout by clearing user and redirecting
       setUser(null);
-      window.location.href = '/';
+      sessionStorage.removeItem('splashSeen');
+      window.location.href = '/landing';
     }
   };
 
@@ -85,6 +104,7 @@ export function NeonAuthProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     isAuthenticated: !!user,
     login,
+    signup,
     logout,
   };
 
@@ -94,6 +114,8 @@ export function NeonAuthProvider({ children }: { children: React.ReactNode }) {
     </NeonAuthContext.Provider>
   );
 }
+
+
 
 export function useNeonAuth() {
   const context = useContext(NeonAuthContext);

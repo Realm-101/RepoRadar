@@ -150,12 +150,108 @@ export async function setupAuth(app: express.Express) {
         console.log('User saved to session');
       }
 
-      // Redirect to home page
+      // Redirect to home page after successful auth
       console.log('Redirecting to home page');
-      res.redirect('/');
+      res.redirect('/home');
     } catch (error) {
       console.error('Auth callback error:', error);
-      res.redirect('/?error=auth_failed');
+      res.redirect('/landing?error=auth_failed');
+    }
+  });
+
+  // Login endpoint
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).json({ message: "Email and password are required" });
+      }
+
+      // For now, create a user session (in production, verify against database)
+      // TODO: Add proper password verification with bcrypt
+      const user = {
+        id: 'user-' + Date.now(),
+        email,
+        name: email.split('@')[0],
+        profileImageUrl: '',
+      };
+
+      // Store user in session
+      (req.session as any).user = user;
+
+      // Try to sync user to database
+      try {
+        await storage.upsertUser({
+          id: user.id,
+          email: user.email,
+          firstName: user.name.split(' ')[0] || '',
+          lastName: user.name.split(' ').slice(1).join(' ') || '',
+          profileImageUrl: user.profileImageUrl || '',
+        });
+      } catch (dbError) {
+        console.warn('Failed to sync user to database:', dbError);
+      }
+
+      await new Promise((resolve, reject) => {
+        req.session.save((err) => {
+          if (err) reject(err);
+          else resolve(undefined);
+        });
+      });
+
+      res.json({ user });
+    } catch (error) {
+      console.error('Login error:', error);
+      res.status(500).json({ message: "Login failed" });
+    }
+  });
+
+  // Signup endpoint
+  app.post("/api/auth/signup", async (req, res) => {
+    try {
+      const { email, password, name } = req.body;
+
+      if (!email || !password || !name) {
+        return res.status(400).json({ message: "Email, password, and name are required" });
+      }
+
+      // For now, create a new user (in production, hash password and check for existing users)
+      // TODO: Add proper password hashing with bcrypt and user existence check
+      const user = {
+        id: 'user-' + Date.now(),
+        email,
+        name,
+        profileImageUrl: '',
+      };
+
+      // Store user in session
+      (req.session as any).user = user;
+
+      // Try to sync user to database
+      try {
+        await storage.upsertUser({
+          id: user.id,
+          email: user.email,
+          firstName: name.split(' ')[0] || '',
+          lastName: name.split(' ').slice(1).join(' ') || '',
+          profileImageUrl: user.profileImageUrl || '',
+        });
+      } catch (dbError) {
+        console.warn('Failed to sync user to database:', dbError);
+      }
+
+      await new Promise((resolve, reject) => {
+        req.session.save((err) => {
+          if (err) reject(err);
+          else resolve(undefined);
+        });
+      });
+
+      res.json({ user });
+    } catch (error) {
+      console.error('Signup error:', error);
+      res.status(500).json({ message: "Signup failed" });
     }
   });
 

@@ -1,9 +1,23 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffect } from "react";
+import { useLocation } from "wouter";
 
 export default function Landing() {
-  const { login } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  // Redirect authenticated users to home
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      setLocation('/home');
+    }
+  }, [isAuthenticated, isLoading, setLocation]);
+
+  const handleGetStarted = () => {
+    setLocation('/handler/sign-in');
+  };
   return (
     <div className="min-h-screen bg-dark text-white">
       {/* Hero Section */}
@@ -30,7 +44,7 @@ export default function Landing() {
           
           <div className="flex items-center justify-center space-x-6 mb-16">
             <Button
-              onClick={login}
+              onClick={handleGetStarted}
               className="bg-gradient-to-r from-primary to-secondary hover:from-secondary hover:to-primary text-white px-12 py-4 rounded-xl text-lg font-semibold transition-all duration-300 neon-glow"
               data-testid="button-login"
             >
@@ -181,7 +195,7 @@ export default function Landing() {
             Join thousands of developers making smarter repository decisions
           </p>
           <Button
-            onClick={login}
+            onClick={handleGetStarted}
             className="bg-gradient-to-r from-primary to-secondary hover:from-secondary hover:to-primary text-white px-12 py-4 rounded-xl text-lg font-semibold transition-all duration-300 neon-glow"
             data-testid="button-get-started"
           >

@@ -16,6 +16,10 @@ export default defineConfig({
         ]
       : []),
   ],
+  define: {
+    'import.meta.env.VITE_STACK_PROJECT_ID': JSON.stringify(process.env.NEXT_PUBLIC_STACK_PROJECT_ID),
+    'import.meta.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY': JSON.stringify(process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY),
+  },
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
