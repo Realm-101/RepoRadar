@@ -1,6 +1,7 @@
 'use client'
 
 import { SpiralAnimation } from "@/components/ui/spiral-animation"
+import { Squares } from "@/components/ui/squares-background"
 import { useState, useEffect } from 'react'
 import { useLocation } from 'wouter'
 
@@ -35,13 +36,24 @@ const Splash = () => {
 
   return (
     <div className="fixed inset-0 w-full h-full overflow-hidden bg-black">
+      {/* Squares Background */}
+      <div className="absolute inset-0 z-0 opacity-30">
+        <Squares 
+          direction="diagonal"
+          speed={0.3}
+          squareSize={50}
+          borderColor="#1a1a1a"
+          hoverFillColor="#0a0a0a"
+        />
+      </div>
+      
       {/* Spiral Animation */}
-      <div className="absolute inset-0">
+      <div className="absolute inset-0 z-10">
         <SpiralAnimation />
       </div>
 
       {/* Logo in center */}
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
         <img 
           src="/Images/logo.png" 
           alt="RepoRadar Logo" 
@@ -63,7 +75,7 @@ const Splash = () => {
 
       {/* Enter Button */}
       <div 
-        className={`absolute left-1/2 bottom-32 -translate-x-1/2 z-10
+        className={`absolute left-1/2 bottom-32 -translate-x-1/2 z-20
           transition-all duration-1500 ease-out
           ${startVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
       >

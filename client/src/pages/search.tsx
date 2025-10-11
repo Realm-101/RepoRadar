@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/layout/Header";
+import { PageWithBackground } from "@/components/layout/PageWithBackground";
 import RepositoryCard from "@/components/repository-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -176,7 +177,7 @@ export default function Search() {
   };
 
   return (
-    <div className="min-h-screen bg-dark text-white">
+    <PageWithBackground>
       <Header />
       
       {/* Search Section */}
@@ -565,6 +566,6 @@ export default function Search() {
           </ContentTransition>
         </div>
       </main>
-    </div>
+    </PageWithBackground>
   );
 }

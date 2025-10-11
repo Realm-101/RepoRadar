@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { OAuthButtons } from '@/components/auth/OAuthButtons';
 import { AuthErrorDisplay, NetworkErrorDisplay, type AuthError } from '@/components/auth/AuthErrorDisplay';
+import { Squares } from '@/components/ui/squares-background';
 
 export default function SignInPage() {
   const [email, setEmail] = useState('');
@@ -88,8 +89,17 @@ export default function SignInPage() {
   };
 
   return (
-    <div className="min-h-screen bg-dark flex items-center justify-center p-4">
-      <Card className="w-full max-w-md bg-card border-border">
+    <div className="relative min-h-screen bg-dark flex items-center justify-center p-4 overflow-hidden">
+      <div className="absolute inset-0 z-0">
+        <Squares 
+          direction="diagonal"
+          speed={0.4}
+          squareSize={40}
+          borderColor="#222"
+          hoverFillColor="#1a1a1a"
+        />
+      </div>
+      <Card className="relative z-10 w-full max-w-md bg-card/95 backdrop-blur-sm border-border">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center gradient-text">
             Welcome Back

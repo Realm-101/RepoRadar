@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { Header } from "@/components/layout/Header";
+import { PageWithBackground } from "@/components/layout/PageWithBackground";
 import EnhancedSearch from "@/components/enhanced-search";
 import RepositoryCard from "@/components/repository-card";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -67,13 +68,13 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-dark text-white">
+    <PageWithBackground>
       <Header />
       
       <EnhancedSearch />
 
-      {/* Dashboard Grid */}
-      <main id="main-content" className="py-8 md:py-16 bg-dark" role="main" aria-label="Dashboard">
+        {/* Dashboard Grid */}
+        <main id="main-content" className="py-8 md:py-16" role="main" aria-label="Dashboard">
         <div className="max-w-7xl mx-auto px-4 md:px-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8">
             {/* Trending Repositories - Left Column */}
@@ -126,6 +127,6 @@ export default function Home() {
           </div>
         </div>
       </main>
-    </div>
+    </PageWithBackground>
   );
 }

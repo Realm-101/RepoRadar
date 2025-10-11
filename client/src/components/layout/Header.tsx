@@ -8,7 +8,6 @@ import { DropdownMenu } from './DropdownMenu';
 import { MobileMenu } from './MobileMenu';
 import { UserMenu } from './UserMenu';
 import { analytics } from '@/hooks/useNavigationTracking';
-import { Code } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface HeaderProps {
@@ -35,12 +34,16 @@ export function Header({ className }: HeaderProps) {
       )}
       role="banner"
     >
-      <nav className="container mx-auto px-4 h-16 flex items-center justify-between" aria-label="Main navigation">
+      <nav className="container mx-auto px-4 h-24 flex items-center justify-between" aria-label="Main navigation">
         {/* Logo */}
         <Link href={isAuthenticated ? '/home' : '/landing'} aria-label="RepoRadar home">
           <a className="flex items-center space-x-3 hover:opacity-80 transition-opacity">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-primary to-secondary flex items-center justify-center">
-              <Code className="w-5 h-5 text-white" aria-hidden="true" />
+            <div className="w-20 h-20 rounded-xl flex items-center justify-center">
+              <img 
+                src="/Images/Gitradartrans.png" 
+                alt="RepoRadar logo" 
+                className="w-20 h-20 object-contain"
+              />
             </div>
             <h1 className="text-xl font-bold gradient-text hidden sm:block">RepoRadar</h1>
           </a>

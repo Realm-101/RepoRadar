@@ -24,7 +24,7 @@ export default defineConfig({
   optimizeDeps: {
     // Exclude Stack Auth server components from optimization
     exclude: ['@stackframe/stack-sc', '@stackframe/stack'],
-    include: ['tiny-case', 'property-expr'],
+    include: ['tiny-case', 'property-expr', 'toposort', 'normalize-wheel'],
     esbuildOptions: {
       // Resolve Next.js modules to our mocks during optimization
       alias: {
@@ -68,19 +68,6 @@ export default defineConfig({
     sourcemap: process.env.NODE_ENV !== 'production'
   },
   server: {
-    port: 5173,
-    strictPort: false,
-    hmr: {
-      protocol: 'ws',
-      host: 'localhost',
-      port: 5173,
-    },
-    proxy: {
-      '/api': {
-        target: 'http://localhost:5000',
-        changeOrigin: true,
-      },
-    },
     fs: {
       strict: true,
       deny: ["**/.*"],

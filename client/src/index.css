@@ -1,4 +1,18 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap');
+@font-face {
+  font-family: 'Created';
+  src: url('/Font/Created.otf') format('opentype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Created';
+  src: url('/Font/Created.otf') format('opentype');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
 
 @tailwind base;
 @tailwind components;
@@ -38,7 +52,7 @@
   --sidebar-accent-foreground: hsl(222, 47%, 11%);
   --sidebar-border: hsl(214.3, 31.8%, 91.4%);
   --sidebar-ring: hsl(18, 100%, 50%);
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Created', system-ui, -apple-system, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
   --radius: 0.75rem;
@@ -87,6 +101,8 @@
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    font-family: 'Created', system-ui, -apple-system, sans-serif !important;
+    letter-spacing: 0.05em !important;
   }
 
   /* Accessibility: Focus indicators */
@@ -129,6 +145,7 @@
 
   /* Reduced motion support */
   @media (prefers-reduced-motion: reduce) {
+
     *,
     *::before,
     *::after {
@@ -200,20 +217,24 @@
 }
 
 @keyframes glow {
-  from { 
-    box-shadow: 0 0 20px rgba(255, 107, 53, 0.3); 
+  from {
+    box-shadow: 0 0 20px rgba(255, 107, 53, 0.3);
   }
-  to { 
-    box-shadow: 0 0 30px rgba(255, 107, 53, 0.5); 
+
+  to {
+    box-shadow: 0 0 30px rgba(255, 107, 53, 0.5);
   }
 }
 
 @keyframes float {
-  0%, 100% { 
-    transform: translateY(0px); 
+
+  0%,
+  100% {
+    transform: translateY(0px);
   }
-  50% { 
-    transform: translateY(-10px); 
+
+  50% {
+    transform: translateY(-10px);
   }
 }
 
@@ -223,11 +244,13 @@
     transform: scale(1);
     filter: blur(0px);
   }
+
   50% {
     opacity: 0.5;
     transform: scale(0.8);
     filter: blur(2px);
   }
+
   100% {
     opacity: 0;
     transform: scale(0.5);
@@ -305,9 +328,12 @@
 }
 
 @keyframes borderGlowPulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 0.5;
   }
+
   50% {
     opacity: 0.8;
   }
@@ -325,12 +351,10 @@
   left: -50%;
   width: 200%;
   height: 200%;
-  background: linear-gradient(
-    45deg,
-    transparent 30%,
-    rgba(255, 255, 255, 0.1) 50%,
-    transparent 70%
-  );
+  background: linear-gradient(45deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.1) 50%,
+      transparent 70%);
   transform: rotate(45deg) translateX(-100%);
   transition: transform 0.6s;
 }
@@ -370,7 +394,7 @@
 
 .card-hover:hover {
   transform: translateY(-8px) scale(1.02);
-  box-shadow: 
+  box-shadow:
     0 20px 40px rgba(255, 107, 53, 0.3),
     0 0 0 1px rgba(255, 107, 53, 0.2);
 }
@@ -381,7 +405,7 @@
 }
 
 .neon-text-glow:hover {
-  text-shadow: 
+  text-shadow:
     0 0 10px currentColor,
     0 0 20px currentColor,
     0 0 30px currentColor;
@@ -417,6 +441,7 @@
     opacity: 0;
     transform: translateY(4px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -425,12 +450,10 @@
 
 /* Enhanced Loading skeleton animation */
 .skeleton {
-  background: linear-gradient(
-    90deg,
-    hsl(var(--muted)) 25%,
-    hsl(var(--primary)/0.1) 50%,
-    hsl(var(--muted)) 75%
-  );
+  background: linear-gradient(90deg,
+      hsl(var(--muted)) 25%,
+      hsl(var(--primary)/0.1) 50%,
+      hsl(var(--muted)) 75%);
   background-size: 200% 100%;
   animation: skeleton-loading 1.8s ease-in-out infinite;
   border-radius: var(--radius);
@@ -445,12 +468,10 @@
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.1),
-    transparent
-  );
+  background: linear-gradient(90deg,
+      transparent,
+      rgba(255, 255, 255, 0.1),
+      transparent);
   animation: skeleton-shimmer 2s ease-in-out infinite;
 }
 
@@ -458,6 +479,7 @@
   0% {
     background-position: 200% 0;
   }
+
   100% {
     background-position: -200% 0;
   }
@@ -467,6 +489,7 @@
   0% {
     left: -100%;
   }
+
   100% {
     left: 100%;
   }
@@ -499,10 +522,13 @@
 
 /* Pulse animation for notifications */
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
     opacity: 1;
   }
+
   50% {
     transform: scale(1.05);
     opacity: 0.9;
@@ -520,9 +546,12 @@
 
 /* Badge bounce animation */
 @keyframes bounce {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translateY(0);
   }
+
   50% {
     transform: translateY(-4px);
   }
@@ -562,6 +591,7 @@
     transform: translateX(-100%);
     opacity: 0;
   }
+
   to {
     transform: translateX(0);
     opacity: 1;
@@ -577,6 +607,7 @@
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }
@@ -588,13 +619,24 @@
 
 /* Shake animation for errors */
 @keyframes shake {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translateX(0);
   }
-  10%, 30%, 50%, 70%, 90% {
+
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
     transform: translateX(-2px);
   }
-  20%, 40%, 60%, 80% {
+
+  20%,
+  40%,
+  60%,
+  80% {
     transform: translateX(2px);
   }
 }
@@ -614,58 +656,58 @@
   .mobile-stack {
     flex-direction: column !important;
   }
-  
+
   .mobile-full-width {
     width: 100% !important;
   }
-  
+
   .mobile-text-center {
     text-align: center !important;
   }
-  
+
   .mobile-hidden {
     display: none !important;
   }
-  
+
   .mobile-px-4 {
     padding-left: 1rem !important;
     padding-right: 1rem !important;
   }
-  
+
   .mobile-py-2 {
     padding-top: 0.5rem !important;
     padding-bottom: 0.5rem !important;
   }
-  
+
   /* Responsive text sizes */
   .text-responsive-xl {
     font-size: 1.5rem !important;
     line-height: 2rem !important;
   }
-  
+
   .text-responsive-lg {
     font-size: 1.25rem !important;
     line-height: 1.75rem !important;
   }
-  
+
   /* Touch-friendly buttons */
   .touch-target {
     min-height: 44px !important;
     min-width: 44px !important;
   }
-  
+
   /* Scrollable containers */
   .mobile-scroll {
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch !important;
   }
-  
+
   /* Card spacing adjustments */
   .mobile-card-spacing {
     margin: 0.5rem !important;
     padding: 1rem !important;
   }
-  
+
   /* Navigation improvements */
   .mobile-nav {
     padding: 0.75rem !important;
@@ -678,14 +720,15 @@
   .tablet-grid-2 {
     grid-template-columns: repeat(2, 1fr) !important;
   }
-  
+
   .tablet-text-sm {
     font-size: 0.875rem !important;
   }
 }
 
 /* High DPI screens */
-@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+@media (-webkit-min-device-pixel-ratio: 2),
+(min-resolution: 192dpi) {
   .retina-border {
     border-width: 0.5px !important;
   }

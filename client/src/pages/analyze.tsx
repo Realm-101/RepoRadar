@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Header } from "@/components/layout/Header";
+import { PageWithBackground } from "@/components/layout/PageWithBackground";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -639,7 +640,7 @@ export default function Analyze() {
   };
 
   return (
-    <div className="min-h-screen bg-dark text-white">
+    <PageWithBackground>
       <Header />
       
       {/* Analysis Section */}
@@ -1002,6 +1003,6 @@ export default function Analyze() {
           </div>
         </section>
       )}
-    </div>
+    </PageWithBackground>
   );
 }

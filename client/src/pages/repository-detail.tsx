@@ -5,6 +5,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { useAuth } from "@/hooks/useAuth";
 import { Header } from "@/components/layout/Header";
+import { PageWithBackground } from "@/components/layout/PageWithBackground";
 import AnalysisResults from "@/components/analysis-results";
 import { Comments } from "@/components/comments";
 import { Ratings } from "@/components/ratings";
@@ -207,7 +208,7 @@ export default function RepositoryDetail() {
   const { repository, analysis, similar, isSaved } = data;
 
   return (
-    <div className="min-h-screen bg-dark text-white">
+    <PageWithBackground>
       <Header />
       
       <div className="max-w-6xl mx-auto px-6 py-8">
@@ -441,6 +442,6 @@ export default function RepositoryDetail() {
           </Card>
         )}
       </div>
-    </div>
+    </PageWithBackground>
   );
 }

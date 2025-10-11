@@ -27,8 +27,12 @@ export default function Landing() {
         <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-secondary/10 to-accent/10 animate-glow"></div>
         <div className="relative max-w-6xl mx-auto px-6 text-center">
           <div className="flex items-center justify-center space-x-3 mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-r from-primary to-secondary flex items-center justify-center animate-float">
-              <i className="fas fa-code text-white text-2xl"></i>
+            <div className="w-32 h-32 rounded-2xl flex items-center justify-center animate-float">
+              <img 
+                src="/Images/Gitradartrans.png" 
+                alt="RepoRadar logo" 
+                className="w-full h-full object-contain"
+              />
             </div>
             <h1 className="text-6xl font-bold gradient-text">RepoRadar</h1>
           </div>

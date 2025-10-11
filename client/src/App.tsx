@@ -32,6 +32,7 @@ import AdvancedAnalytics from "@/pages/advanced-analytics";
 import Integrations from "@/pages/integrations";
 import CodeReview from "@/pages/code-review";
 import AdminDashboard from "@/pages/admin";
+import SquaresDemo from "@/pages/squares-demo";
 import SignInPage from "@/pages/handler/sign-in";
 import SignUpPage from "@/pages/handler/sign-up";
 import ForgotPasswordPage from "@/pages/forgot-password";
@@ -80,6 +81,7 @@ function Router() {
       <Route path="/integrations" component={Integrations} />
       <Route path="/code-review" component={CodeReview} />
       <Route path="/admin" component={AdminDashboard} />
+      <Route path="/squares-demo" component={SquaresDemo} />
       
       {/* Home page - for authenticated users */}
       {isAuthenticated && (

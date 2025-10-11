@@ -7,6 +7,14 @@ interface OAuthButtonsProps {
 }
 
 export function OAuthButtons({ mode }: OAuthButtonsProps) {
+  // Temporarily disabled due to Stack Auth dependency issues
+  // TODO: Re-enable after fixing Stack Auth configuration
+  return null;
+}
+
+/* ORIGINAL CODE - DISABLED DUE TO STACK AUTH ISSUES
+
+export function OAuthButtons({ mode }: OAuthButtonsProps) {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isGithubLoading, setIsGithubLoading] = useState(false);
 
@@ -85,3 +93,4 @@ export function OAuthButtons({ mode }: OAuthButtonsProps) {
     </div>
   );
 }
+*/
