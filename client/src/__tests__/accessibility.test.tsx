@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@/contexts/theme-context';
 import Home from '@/pages/home';
 import Search from '@/pages/search';
-import Header from '@/components/header';
+import { Header } from '@/components/layout/Header';
 import { SkipLink } from '@/components/skip-link';
 
 // Mock useAuth hook

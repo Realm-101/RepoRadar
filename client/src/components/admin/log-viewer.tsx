@@ -52,12 +52,12 @@ export function LogViewer({ adminToken }: LogViewerProps) {
   const [page, setPage] = useState<number>(0);
   const [limit] = useState<number>(50);
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
-  const { isLoading, startLoading, stopLoading } = useLoadingState();
+  const { isLoading, setLoading, setSuccess, setError: setLoadingError } = useLoadingState();
   const [error, setError] = useState<string | null>(null);
 
   const fetchLogs = async () => {
     try {
-      startLoading();
+      setLoading();
       setError(null);
 
       // Calculate date range based on selection
@@ -122,8 +122,9 @@ export function LogViewer({ adminToken }: LogViewerProps) {
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
+      setLoadingError(err instanceof Error ? err : new Error('Unknown error'));
     } finally {
-      stopLoading();
+      setSuccess();
     }
   };
 

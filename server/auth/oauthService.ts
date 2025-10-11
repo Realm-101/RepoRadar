@@ -69,12 +69,12 @@ export function initializeStackAuth(): StackServerApp {
   
   try {
     // Initialize Stack Auth with server configuration
-    // tokenStore is set to 'nextjs-cookie' for server-side usage
+    // Using 'cookie' tokenStore for React/Vite compatibility (not Next.js specific)
     stackServerApp = new StackServerApp({
       projectId: STACK_PROJECT_ID!,
       publishableClientKey: STACK_PUBLISHABLE_KEY!,
       secretServerKey: STACK_SECRET_KEY!,
-      tokenStore: 'nextjs-cookie', // Use Next.js cookie-based token storage
+      tokenStore: 'cookie', // Use standard cookie-based token storage for React
     });
     
     console.log('Stack Auth initialized successfully');

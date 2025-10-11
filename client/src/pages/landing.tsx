@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect } from "react";
 import { useLocation } from "wouter";
+import { Header } from "@/components/layout/Header";
 
 export default function Landing() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -20,6 +21,7 @@ export default function Landing() {
   };
   return (
     <div className="min-h-screen bg-dark text-white">
+      <Header />
       {/* Hero Section */}
       <section className="relative py-32 bg-gradient-to-b from-dark via-card to-dark overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-secondary/10 to-accent/10 animate-glow"></div>

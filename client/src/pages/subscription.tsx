@@ -1,4 +1,5 @@
 import { useAuth } from "@/hooks/useAuth";
+import { Header } from "@/components/layout/Header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -137,17 +138,20 @@ export default function SubscriptionPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-background py-12">
-        <div className="max-w-7xl mx-auto px-6">
-          <Card className="p-8 text-center">
-            <h2 className="text-2xl font-bold mb-4">Subscription Management</h2>
-            <p className="text-muted-foreground mb-6">
-              Sign in to manage your subscription
-            </p>
-            <Button asChild>
-              <a href="/api/login">Sign In</a>
-            </Button>
-          </Card>
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="py-12">
+          <div className="max-w-7xl mx-auto px-6">
+            <Card className="p-8 text-center">
+              <h2 className="text-2xl font-bold mb-4">Subscription Management</h2>
+              <p className="text-muted-foreground mb-6">
+                Sign in to manage your subscription
+              </p>
+              <Button asChild>
+                <a href="/api/login">Sign In</a>
+              </Button>
+            </Card>
+          </div>
         </div>
       </div>
     );
@@ -155,13 +159,16 @@ export default function SubscriptionPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background py-12">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="mb-8">
-            <div className="h-10 w-64 bg-gray-700 rounded animate-pulse mb-4"></div>
-            <div className="h-4 w-96 bg-gray-700 rounded animate-pulse"></div>
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="py-12">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="mb-8">
+              <div className="h-10 w-64 bg-gray-700 rounded animate-pulse mb-4"></div>
+              <div className="h-4 w-96 bg-gray-700 rounded animate-pulse"></div>
+            </div>
+            <LoadingSkeleton variant="card" count={3} />
           </div>
-          <LoadingSkeleton variant="card" count={3} />
         </div>
       </div>
     );
@@ -169,14 +176,17 @@ export default function SubscriptionPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-background py-12">
-        <div className="max-w-7xl mx-auto px-6">
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              Failed to load subscription information. Please try again later.
-            </AlertDescription>
-          </Alert>
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="py-12">
+          <div className="max-w-7xl mx-auto px-6">
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Failed to load subscription information. Please try again later.
+              </AlertDescription>
+            </Alert>
+          </div>
         </div>
       </div>
     );
@@ -187,8 +197,10 @@ export default function SubscriptionPage() {
   const isStripeEnabled = stripeConfig?.enabled !== false;
 
   return (
-    <div className="min-h-screen bg-background py-12">
-      <div className="max-w-7xl mx-auto px-6">
+    <div className="min-h-screen bg-background">
+      <Header />
+      <div className="py-12">
+        <div className="max-w-7xl mx-auto px-6">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold gradient-text mb-4">
@@ -367,6 +379,7 @@ export default function SubscriptionPage() {
             </CardContent>
           </Card>
         )}
+        </div>
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Header } from "@/components/layout/Header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -200,7 +201,9 @@ export default function AdvancedAnalytics() {
   };
 
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
+    <div className="min-h-screen bg-background">
+      <Header />
+      <div className="container mx-auto p-6 max-w-7xl">
       <div className="flex justify-between items-start mb-8">
         <div>
           <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
@@ -811,6 +814,7 @@ export default function AdvancedAnalytics() {
       </Tabs>
       </>
       )}
+      </div>
     </div>
   );
 }

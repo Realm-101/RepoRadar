@@ -20,11 +20,11 @@ export function DataExport({ adminToken }: DataExportProps) {
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const { toast } = useToast();
-  const { isLoading, startLoading, stopLoading } = useLoadingState();
+  const { isLoading, setLoading, setSuccess, setError: setLoadingError } = useLoadingState();
 
   const handleExport = async () => {
     try {
-      startLoading();
+      setLoading();
 
       // Calculate date range
       let start: Date;
@@ -119,7 +119,7 @@ export function DataExport({ adminToken }: DataExportProps) {
         variant: 'destructive',
       });
     } finally {
-      stopLoading();
+      setSuccess();
     }
   };
 

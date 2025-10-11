@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { LoadingSkeleton, CardSkeleton } from "@/components/skeleton-loader";
 import { Link } from "wouter";
+import { Header } from "@/components/layout/Header";
 import {
   LineChart,
   Line,
@@ -59,17 +60,20 @@ export default function Analytics() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-background py-12">
-        <div className="max-w-7xl mx-auto px-6">
-          <Card className="p-8 text-center">
-            <h2 className="text-2xl font-bold mb-4">Analytics Dashboard</h2>
-            <p className="text-muted-foreground mb-6">
-              Sign in to view your analytics and insights
-            </p>
-            <Button asChild>
-              <a href="/api/login">Sign In</a>
-            </Button>
-          </Card>
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="py-12">
+          <div className="max-w-7xl mx-auto px-6">
+            <Card className="p-8 text-center">
+              <h2 className="text-2xl font-bold mb-4">Analytics Dashboard</h2>
+              <p className="text-muted-foreground mb-6">
+                Sign in to view your analytics and insights
+              </p>
+              <Button asChild>
+                <a href="/api/login">Sign In</a>
+              </Button>
+            </Card>
+          </div>
         </div>
       </div>
     );
@@ -77,26 +81,29 @@ export default function Analytics() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background py-12">
-        <div className="max-w-7xl mx-auto px-6">
-          {/* Header Skeleton */}
-          <div className="mb-8">
-            <div className="h-10 w-64 bg-gray-700 rounded animate-pulse mb-4"></div>
-            <div className="h-4 w-96 bg-gray-700 rounded animate-pulse"></div>
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="py-12">
+          <div className="max-w-7xl mx-auto px-6">
+            {/* Header Skeleton */}
+            <div className="mb-8">
+              <div className="h-10 w-64 bg-gray-700 rounded animate-pulse mb-4"></div>
+              <div className="h-4 w-96 bg-gray-700 rounded animate-pulse"></div>
+            </div>
+            
+            {/* Stats Grid Skeleton */}
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+              <LoadingSkeleton variant="card" count={6} />
+            </div>
+            
+            {/* Charts Grid Skeleton */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+              <LoadingSkeleton variant="chart" count={4} />
+            </div>
+            
+            {/* Table Skeleton */}
+            <LoadingSkeleton variant="table" count={5} />
           </div>
-          
-          {/* Stats Grid Skeleton */}
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-            <LoadingSkeleton variant="card" count={6} />
-          </div>
-          
-          {/* Charts Grid Skeleton */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <LoadingSkeleton variant="chart" count={4} />
-          </div>
-          
-          {/* Table Skeleton */}
-          <LoadingSkeleton variant="table" count={5} />
         </div>
       </div>
     );
@@ -105,34 +112,37 @@ export default function Analytics() {
   // Handle empty state
   if (analyticsData?.isEmpty) {
     return (
-      <div className="min-h-screen bg-background py-12">
-        <div className="max-w-7xl mx-auto px-6">
-          {/* Header */}
-          <div className="mb-8">
-            <h1 className="text-4xl font-bold gradient-text mb-4">
-              Analytics Dashboard
-            </h1>
-            <p className="text-muted-foreground">
-              Track your repository analysis patterns and insights
-            </p>
-          </div>
-
-          {/* Empty State Card */}
-          <Card className="p-12 text-center">
-            <div className="max-w-md mx-auto">
-              <Activity className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-              <h2 className="text-2xl font-bold mb-2">No Analyses Yet</h2>
-              <p className="text-muted-foreground mb-6">
-                {analyticsData.message || 'Start by analyzing your first repository to see insights and statistics here.'}
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="py-12">
+          <div className="max-w-7xl mx-auto px-6">
+            {/* Header */}
+            <div className="mb-8">
+              <h1 className="text-4xl font-bold gradient-text mb-4">
+                Analytics Dashboard
+              </h1>
+              <p className="text-muted-foreground">
+                Track your repository analysis patterns and insights
               </p>
-              <Button asChild size="lg">
-                <Link href="/">
-                  <Star className="w-4 h-4 mr-2" />
-                  Analyze Your First Repository
-                </Link>
-              </Button>
             </div>
-          </Card>
+
+            {/* Empty State Card */}
+            <Card className="p-12 text-center">
+              <div className="max-w-md mx-auto">
+                <Activity className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                <h2 className="text-2xl font-bold mb-2">No Analyses Yet</h2>
+                <p className="text-muted-foreground mb-6">
+                  {analyticsData.message || 'Start by analyzing your first repository to see insights and statistics here.'}
+                </p>
+                <Button asChild size="lg">
+                  <Link href="/">
+                    <Star className="w-4 h-4 mr-2" />
+                    Analyze Your First Repository
+                  </Link>
+                </Button>
+              </div>
+            </Card>
+          </div>
         </div>
       </div>
     );
@@ -154,8 +164,10 @@ export default function Analytics() {
   const performanceData = analyticsData?.performance || [];
 
   return (
-    <div className="min-h-screen bg-background py-12">
-      <div className="max-w-7xl mx-auto px-6">
+    <div className="min-h-screen bg-background">
+      <Header />
+      <div className="py-12">
+        <div className="max-w-7xl mx-auto px-6">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold gradient-text mb-4">
@@ -386,6 +398,7 @@ export default function Analytics() {
             ))}
           </div>
         </Card>
+        </div>
       </div>
     </div>
   );

@@ -4,7 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { useAuth } from "@/hooks/useAuth";
-import Header from "@/components/header";
+import { Header } from "@/components/layout/Header";
 import AnalysisResults from "@/components/analysis-results";
 import { Comments } from "@/components/comments";
 import { Ratings } from "@/components/ratings";

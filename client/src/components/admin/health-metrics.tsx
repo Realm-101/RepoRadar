@@ -33,12 +33,12 @@ export function HealthMetrics({
   refreshInterval = 30000 
 }: HealthMetricsProps) {
   const [data, setData] = useState<HealthMetricsData | null>(null);
-  const { isLoading, startLoading, stopLoading } = useLoadingState();
+  const { isLoading, setLoading, setSuccess, setError: setLoadingError } = useLoadingState();
   const [error, setError] = useState<string | null>(null);
 
   const fetchHealthMetrics = async () => {
     try {
-      startLoading();
+      setLoading();
       setError(null);
       
       const response = await fetch('/api/admin/health-metrics', {
@@ -55,8 +55,9 @@ export function HealthMetrics({
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
+      setLoadingError(err instanceof Error ? err : new Error('Unknown error'));
     } finally {
-      stopLoading();
+      setSuccess();
     }
   };
 

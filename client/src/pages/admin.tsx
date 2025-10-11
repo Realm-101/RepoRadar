@@ -21,7 +21,7 @@ export default function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>('overview');
   const { toast } = useToast();
-  const { isLoading, startLoading, stopLoading } = useLoadingState();
+  const { isLoading, setLoading, setSuccess, setError: setLoadingError } = useLoadingState();
 
   // Check if admin token is stored in localStorage
   useEffect(() => {
@@ -42,7 +42,7 @@ export default function AdminDashboard() {
       return;
     }
 
-    startLoading();
+    setLoading();
     try {
       // Test the token by making a request to the health metrics endpoint
       const response = await fetch('/api/admin/health-metrics', {
@@ -72,7 +72,7 @@ export default function AdminDashboard() {
         variant: 'destructive',
       });
     } finally {
-      stopLoading();
+      setSuccess();
     }
   };
 

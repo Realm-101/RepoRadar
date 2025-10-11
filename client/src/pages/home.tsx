@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import Header from "@/components/header";
+import { Header } from "@/components/layout/Header";
 import EnhancedSearch from "@/components/enhanced-search";
 import RepositoryCard from "@/components/repository-card";
 import { isUnauthorizedError } from "@/lib/authUtils";

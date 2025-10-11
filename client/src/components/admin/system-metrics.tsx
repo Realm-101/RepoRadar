@@ -51,12 +51,12 @@ export function SystemMetrics({
 }: SystemMetricsProps) {
   const [data, setData] = useState<SystemMetricsData | null>(null);
   const [timeRange, setTimeRange] = useState<string>('24h');
-  const { isLoading, startLoading, stopLoading } = useLoadingState();
+  const { isLoading, setLoading, setSuccess, setError: setLoadingError } = useLoadingState();
   const [error, setError] = useState<string | null>(null);
 
   const fetchSystemMetrics = async () => {
     try {
-      startLoading();
+      setLoading();
       setError(null);
 
       // Calculate date range based on selection
@@ -98,8 +98,9 @@ export function SystemMetrics({
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
+      setLoadingError(err instanceof Error ? err : new Error('Unknown error'));
     } finally {
-      stopLoading();
+      setSuccess();
     }
   };
 

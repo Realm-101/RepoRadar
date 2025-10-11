@@ -1,6 +1,9 @@
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { HelmetProvider } from "react-helmet-async";
+// React 19 compatibility workaround
+const HelmetProviderComponent = HelmetProvider as any;
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
@@ -40,6 +43,7 @@ import SubscriptionBilling from "@/pages/subscription-billing";
 import { AIAssistant } from "@/components/ai-assistant";
 import OnboardingTour from "@/components/onboarding-tour";
 import { SkipLink } from "@/components/skip-link";
+import { ScreenReaderAnnouncer } from "@/components/screen-reader-announcer";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { usePageTracking } from "@/hooks/usePageTracking";
 
@@ -67,6 +71,7 @@ function Router() {
       <Route path="/compare" component={Compare} />
       <Route path="/discover" component={Discover} />
       <Route path="/docs" component={Docs} />
+      <Route path="/docs/:category/:doc?" component={Docs} />
       <Route path="/pricing" component={Pricing} />
       <Route path="/checkout" component={Checkout} />
       <Route path="/payment-success" component={PaymentSuccess} />
@@ -102,20 +107,23 @@ function Router() {
 
 function App() {
   return (
-    <ThemeProvider>
-      <QueryClientProvider client={queryClient}>
-        <NeonAuthProvider>
-          <TooltipProvider>
-            <SkipLink />
-            <KeyboardShortcutsDialog />
-            <Toaster />
-            <Router />
-            <AIAssistant />
-            <OnboardingTour />
-          </TooltipProvider>
-        </NeonAuthProvider>
-      </QueryClientProvider>
-    </ThemeProvider>
+    <HelmetProviderComponent>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <NeonAuthProvider>
+            <TooltipProvider>
+              <SkipLink />
+              <ScreenReaderAnnouncer />
+              <KeyboardShortcutsDialog />
+              <Toaster />
+              <Router />
+              <AIAssistant />
+              <OnboardingTour />
+            </TooltipProvider>
+          </NeonAuthProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
+    </HelmetProviderComponent>
   );
 }
 

@@ -1,6 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { CollectionsManager } from "@/components/collections-manager";
-import Header from "@/components/header";
+import { Header } from "@/components/layout/Header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Folder } from "lucide-react";

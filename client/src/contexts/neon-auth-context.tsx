@@ -5,6 +5,12 @@ interface User {
   email: string;
   name: string;
   profileImageUrl?: string;
+  firstName?: string;
+  lastName?: string;
+  avatar?: string;
+  subscriptionTier?: string;
+  subscriptionStatus?: string;
+  createdAt?: string;
 }
 
 interface NeonAuthContextType {

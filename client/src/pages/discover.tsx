@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import Header from "@/components/header";
+import { Header } from "@/components/layout/Header";
 import RepositoryCard from "@/components/repository-card";
 import RepositoryListItem from "@/components/repository-list-item";
 import { Button } from "@/components/ui/button";

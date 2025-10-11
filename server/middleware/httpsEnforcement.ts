@@ -70,12 +70,12 @@ export function setSecurityHeaders(req: Request, res: Response, next: NextFuncti
   // Restricts resource loading to prevent XSS and other attacks
   const cspDirectives = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://accounts.google.com https://apis.google.com",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://accounts.google.com https://apis.google.com https://js.stripe.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' data: https: blob:",
-    "connect-src 'self' https://api.github.com https://accounts.google.com https://oauth2.googleapis.com",
-    "frame-src 'self' https://accounts.google.com",
+    "connect-src 'self' https://api.github.com https://accounts.google.com https://oauth2.googleapis.com https://api.stripe.com",
+    "frame-src 'self' https://accounts.google.com https://js.stripe.com https://hooks.stripe.com",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -85,8 +85,8 @@ export function setSecurityHeaders(req: Request, res: Response, next: NextFuncti
 
   // In development, allow more permissive CSP for hot reload
   if (!isProduction) {
-    cspDirectives[1] = "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://accounts.google.com https://apis.google.com";
-    cspDirectives[3] = "connect-src 'self' ws: wss: https://api.github.com https://accounts.google.com https://oauth2.googleapis.com";
+    cspDirectives[1] = "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://accounts.google.com https://apis.google.com https://js.stripe.com";
+    cspDirectives[5] = "connect-src 'self' ws: wss: https://api.github.com https://accounts.google.com https://oauth2.googleapis.com https://api.stripe.com";
     // Remove upgrade-insecure-requests in development
     cspDirectives.pop();
   }
