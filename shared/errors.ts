@@ -143,4 +143,54 @@ export const ErrorCodes = {
     userMessage: 'Data export failed.',
     recoveryAction: 'Try again or try a different export format',
   },
+
+  // Authentication errors
+  INVALID_CREDENTIALS: {
+    code: 'INVALID_CREDENTIALS',
+    statusCode: 401,
+    userMessage: 'Invalid email or password.',
+    recoveryAction: 'Please check your credentials and try again',
+  },
+  ACCOUNT_LOCKED: {
+    code: 'ACCOUNT_LOCKED',
+    statusCode: 403,
+    userMessage: 'Your account has been temporarily locked due to multiple failed login attempts.',
+    recoveryAction: 'Please try again later or reset your password',
+  },
+  EMAIL_NOT_VERIFIED: {
+    code: 'EMAIL_NOT_VERIFIED',
+    statusCode: 403,
+    userMessage: 'Please verify your email address before logging in.',
+    recoveryAction: 'Check your email for a verification link',
+  },
+  INVALID_TOKEN: {
+    code: 'INVALID_TOKEN',
+    statusCode: 400,
+    userMessage: 'The reset link is invalid.',
+    recoveryAction: 'Please request a new password reset link',
+  },
+  TOKEN_EXPIRED: {
+    code: 'TOKEN_EXPIRED',
+    statusCode: 400,
+    userMessage: 'The reset link has expired.',
+    recoveryAction: 'Please request a new password reset link',
+  },
+  OAUTH_ERROR: {
+    code: 'OAUTH_ERROR',
+    statusCode: 500,
+    userMessage: 'Authentication with the provider failed.',
+    recoveryAction: 'Please try again or use a different sign-in method',
+  },
+  SESSION_EXPIRED: {
+    code: 'SESSION_EXPIRED',
+    statusCode: 401,
+    userMessage: 'Your session has expired.',
+    recoveryAction: 'Please sign in again',
+  },
+  PASSWORD_VALIDATION_ERROR: {
+    code: 'PASSWORD_VALIDATION_ERROR',
+    statusCode: 400,
+    userMessage: 'Password does not meet requirements.',
+    recoveryAction: 'Password must be at least 8 characters long',
+  },
 } as const;

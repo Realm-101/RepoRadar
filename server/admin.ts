@@ -579,5 +579,29 @@ export function createAdminRouter(): Router {
   // Data export
   router.get('/export', exportData);
   
+  // Rate limit violations
+  router.get('/rate-limit-violations', getRateLimitViolations);
+  
   return router;
+}
+
+/**
+ * Get rate limit violations for security monitoring
+ */
+async function getRateLimitViolations(req: Request, res: Response): Promise<void> {
+  try {
+    const { getRateLimitViolations: getViolations } = await import('./middleware/rateLimiter');
+    const limit = parseInt(req.query.limit as string) || 100;
+    
+    const violations = getViolations(limit);
+    
+    res.json({
+      violations,
+      total: violations.length,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Error fetching rate limit violations:', error);
+    res.status(500).json({ error: 'Failed to fetch rate limit violations' });
+  }
 }

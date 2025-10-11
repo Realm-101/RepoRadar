@@ -52,7 +52,7 @@ interface AnalyticsData {
 export default function Analytics() {
   const { user, isAuthenticated } = useAuth();
 
-  const { data: analyticsData, isLoading } = useQuery<AnalyticsData>({
+  const { data: analyticsData, isLoading, error } = useQuery<AnalyticsData & { isEmpty?: boolean; message?: string }>({
     queryKey: ['/api/analytics/dashboard'],
     enabled: isAuthenticated,
   });
@@ -97,6 +97,42 @@ export default function Analytics() {
           
           {/* Table Skeleton */}
           <LoadingSkeleton variant="table" count={5} />
+        </div>
+      </div>
+    );
+  }
+
+  // Handle empty state
+  if (analyticsData?.isEmpty) {
+    return (
+      <div className="min-h-screen bg-background py-12">
+        <div className="max-w-7xl mx-auto px-6">
+          {/* Header */}
+          <div className="mb-8">
+            <h1 className="text-4xl font-bold gradient-text mb-4">
+              Analytics Dashboard
+            </h1>
+            <p className="text-muted-foreground">
+              Track your repository analysis patterns and insights
+            </p>
+          </div>
+
+          {/* Empty State Card */}
+          <Card className="p-12 text-center">
+            <div className="max-w-md mx-auto">
+              <Activity className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+              <h2 className="text-2xl font-bold mb-2">No Analyses Yet</h2>
+              <p className="text-muted-foreground mb-6">
+                {analyticsData.message || 'Start by analyzing your first repository to see insights and statistics here.'}
+              </p>
+              <Button asChild size="lg">
+                <Link href="/">
+                  <Star className="w-4 h-4 mr-2" />
+                  Analyze Your First Repository
+                </Link>
+              </Button>
+            </div>
+          </Card>
         </div>
       </div>
     );
@@ -225,7 +261,7 @@ export default function Analytics() {
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  label={({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`}
                   outerRadius={80}
                   fill="#8884d8"
                   dataKey="value"

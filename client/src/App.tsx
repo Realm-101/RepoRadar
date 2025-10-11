@@ -31,6 +31,8 @@ import CodeReview from "@/pages/code-review";
 import AdminDashboard from "@/pages/admin";
 import SignInPage from "@/pages/handler/sign-in";
 import SignUpPage from "@/pages/handler/sign-up";
+import ForgotPasswordPage from "@/pages/forgot-password";
+import ResetPasswordPage from "@/pages/reset-password";
 import { AIAssistant } from "@/components/ai-assistant";
 import OnboardingTour from "@/components/onboarding-tour";
 import { SkipLink } from "@/components/skip-link";
@@ -49,6 +51,8 @@ function Router() {
       {/* Auth routes */}
       <Route path="/handler/sign-in" component={SignInPage} />
       <Route path="/handler/sign-up" component={SignUpPage} />
+      <Route path="/forgot-password" component={ForgotPasswordPage} />
+      <Route path="/reset-password" component={ResetPasswordPage} />
       
       {/* Public routes - available to everyone */}
       <Route path="/landing" component={Landing} />

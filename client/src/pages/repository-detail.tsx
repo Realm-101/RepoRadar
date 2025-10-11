@@ -13,7 +13,73 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Star, GitFork, Eye, Github, Bookmark, Scale, Search, ExternalLink, AlertTriangle, Brain, MessageSquare } from "lucide-react";
+import { Star, GitFork, Eye, Github, Bookmark, Scale, Search, ExternalLink, AlertTriangle, Brain, MessageSquare, RefreshCw } from "lucide-react";
+
+function ReanalyzeButton({ repositoryId }: { repositoryId: string }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const reanalyzeMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/repositories/${repositoryId}/reanalyze`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || error.error || 'Failed to reanalyze repository');
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Reanalysis Complete",
+        description: "Repository has been reanalyzed with fresh data.",
+      });
+      // Invalidate and refetch repository data
+      queryClient.invalidateQueries({ queryKey: ['/api/repositories', repositoryId] });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Reanalysis Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  return (
+    <Button
+      onClick={() => reanalyzeMutation.mutate()}
+      disabled={reanalyzeMutation.isPending}
+      variant="outline"
+      className="border-2 border-border hover:border-primary transition-colors"
+      data-testid="button-reanalyze"
+    >
+      <RefreshCw 
+        className={`text-gray-400 mr-2 ${reanalyzeMutation.isPending ? 'animate-spin' : ''}`} 
+        size={16} 
+      />
+      {reanalyzeMutation.isPending ? 'Reanalyzing...' : 'Reanalyze'}
+    </Button>
+  );
+}
 
 export default function RepositoryDetail() {
   const { id } = useParams<{ id: string }>();
@@ -191,6 +257,7 @@ export default function RepositoryDetail() {
                   <Bookmark className={`${isSaved ? 'text-primary' : 'text-gray-400'} mr-2`} size={16} fill={isSaved ? 'currentColor' : 'none'} />
                   {isSaved ? 'Saved' : 'Save'}
                 </Button>
+                <ReanalyzeButton repositoryId={id} />
                 {user && (
                   <CollectionsManager 
                     repositoryId={id} 

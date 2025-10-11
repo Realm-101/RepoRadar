@@ -5,20 +5,31 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { OAuthButtons } from '@/components/auth/OAuthButtons';
+import { 
+  AuthErrorDisplay, 
+  NetworkErrorDisplay, 
+  PasswordRequirements,
+  type AuthError 
+} from '@/components/auth/AuthErrorDisplay';
 
 export default function SignUpPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<AuthError | string | null>(null);
+  const [isNetworkError, setIsNetworkError] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [showPasswordRequirements, setShowPasswordRequirements] = useState(false);
   const { signup } = useAuth();
   const [, setLocation] = useLocation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError(null);
+    setIsNetworkError(false);
 
     if (password !== confirmPassword) {
       setError('Passwords do not match');
@@ -26,7 +37,11 @@ export default function SignUpPage() {
     }
 
     if (password.length < 8) {
-      setError('Password must be at least 8 characters');
+      setError({
+        error: 'PASSWORD_VALIDATION_ERROR',
+        message: 'Password does not meet requirements.',
+        recoveryAction: 'Password must be at least 8 characters long',
+      });
       return;
     }
 
@@ -35,10 +50,47 @@ export default function SignUpPage() {
     try {
       await signup(email, password, name);
       setLocation('/home');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Signup failed');
+    } catch (err: any) {
+      if (err.message?.includes('network') || err.message?.includes('fetch')) {
+        setIsNetworkError(true);
+      } else if (err.error && err.message) {
+        setError({
+          error: err.error,
+          message: err.message,
+          recoveryAction: err.recoveryAction,
+          retryAfter: err.retryAfter,
+        });
+      } else {
+        setError(err instanceof Error ? err.message : 'Signup failed');
+      }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleRetry = async () => {
+    setIsRetrying(true);
+    setError(null);
+    setIsNetworkError(false);
+    
+    try {
+      await signup(email, password, name);
+      setLocation('/home');
+    } catch (err: any) {
+      if (err.message?.includes('network') || err.message?.includes('fetch')) {
+        setIsNetworkError(true);
+      } else if (err.error && err.message) {
+        setError({
+          error: err.error,
+          message: err.message,
+          recoveryAction: err.recoveryAction,
+          retryAfter: err.retryAfter,
+        });
+      } else {
+        setError(err instanceof Error ? err.message : 'Signup failed');
+      }
+    } finally {
+      setIsRetrying(false);
     }
   };
 
@@ -55,10 +107,18 @@ export default function SignUpPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-                {error}
-              </div>
+            {isNetworkError && (
+              <NetworkErrorDisplay 
+                onRetry={handleRetry}
+                isRetrying={isRetrying}
+              />
+            )}
+            
+            {!isNetworkError && error && (
+              <AuthErrorDisplay 
+                error={error}
+                onRetry={handleRetry}
+              />
             )}
             
             <div className="space-y-2">
@@ -95,10 +155,18 @@ export default function SignUpPage() {
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onFocus={() => setShowPasswordRequirements(true)}
+                onBlur={() => setShowPasswordRequirements(false)}
                 required
                 minLength={8}
                 className="bg-dark border-border"
               />
+              {showPasswordRequirements && (
+                <PasswordRequirements 
+                  password={password}
+                  showRequirements={true}
+                />
+              )}
             </div>
 
             <div className="space-y-2">
@@ -121,18 +189,20 @@ export default function SignUpPage() {
             >
               {isLoading ? 'Creating account...' : 'Sign Up'}
             </Button>
-
-            <div className="text-center text-sm text-gray-400">
-              Already have an account?{' '}
-              <button
-                type="button"
-                onClick={() => setLocation('/handler/sign-in')}
-                className="text-primary hover:underline"
-              >
-                Sign in
-              </button>
-            </div>
           </form>
+
+          <OAuthButtons mode="signup" />
+
+          <div className="text-center text-sm text-gray-400 mt-4">
+            Already have an account?{' '}
+            <button
+              type="button"
+              onClick={() => setLocation('/handler/sign-in')}
+              className="text-primary hover:underline"
+            >
+              Sign in
+            </button>
+          </div>
         </CardContent>
       </Card>
     </div>

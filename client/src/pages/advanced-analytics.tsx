@@ -25,6 +25,52 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 const COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#6366f1'];
 
+interface AdvancedAnalyticsData {
+  overview: {
+    totalAnalyses: number;
+    averageScore: number;
+    trendsUp: number;
+    activeRepositories: number;
+    teamMembers: number;
+    apiCalls: number;
+  };
+  scoreDistribution: Array<{
+    range: string;
+    count: number;
+    percentage: number;
+  }>;
+  timeSeriesData: Array<{
+    date: string;
+    analyses: number;
+    avgScore: number;
+    repositories: number;
+  }>;
+  languageDistribution: Array<{
+    name: string;
+    value: number;
+    percentage: number;
+  }>;
+  metricTrends: {
+    [key: string]: {
+      current: number;
+      previous: number;
+      trend: "up" | "down" | "stable";
+    };
+  };
+  topPerformers: Array<{
+    name: string;
+    score: number;
+    language: string;
+    stars: number;
+  }>;
+  radarData: Array<{
+    metric: string;
+    A: number;
+    B: number;
+    fullMark: number;
+  }>;
+}
+
 export default function AdvancedAnalytics() {
   const { toast } = useToast();
   const [timeRange, setTimeRange] = useState("30d");
@@ -32,11 +78,45 @@ export default function AdvancedAnalytics() {
   const [comparisonMode, setComparisonMode] = useState(false);
 
   // Fetch comprehensive analytics data
-  const { data: analyticsData, isLoading } = useQuery({
+  const { data: analyticsData, isLoading, error } = useQuery<AdvancedAnalyticsData>({
     queryKey: ["/api/analytics/advanced", timeRange],
+    queryFn: async () => {
+      const res = await fetch(`/api/analytics/advanced?timeRange=${timeRange}`, {
+        credentials: "include",
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      // Handle authentication errors
+      if (res.status === 401) {
+        // Store current URL for return after login
+        const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
+        
+        // Redirect to login page with return URL
+        window.location.href = `/handler/sign-in?returnUrl=${returnUrl}`;
+        
+        throw new Error('Unauthorized - redirecting to login');
+      }
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ message: res.statusText }));
+        throw new Error(errorData.message || `Failed to fetch analytics: ${res.statusText}`);
+      }
+      
+      return await res.json();
+    },
+    retry: (failureCount, error) => {
+      // Don't retry on authentication errors
+      if (error.message.includes('Unauthorized')) {
+        return false;
+      }
+      // Retry other errors up to 2 times
+      return failureCount < 2;
+    },
   });
 
-  // Mock data for demonstration
+  // Fallback mock data for demonstration (used when no real data exists yet)
   const mockData = {
     overview: {
       totalAnalyses: 1247,
@@ -98,6 +178,7 @@ export default function AdvancedAnalytics() {
   };
 
   const data = analyticsData || mockData;
+  const isUsingMockData = !analyticsData || (analyticsData.overview?.totalAnalyses === 0) || error;
 
   const getTrendIcon = (trend: string) => {
     switch (trend) {
@@ -151,7 +232,60 @@ export default function AdvancedAnalytics() {
         </div>
       </div>
 
+      {/* Loading State */}
+      {isLoading && (
+        <div className="flex flex-col items-center justify-center py-12 space-y-4">
+          <RefreshCw className="h-8 w-8 animate-spin text-purple-600" />
+          <div className="text-center">
+            <span className="text-lg font-medium">Loading analytics data...</span>
+            <p className="text-sm text-muted-foreground mt-1">
+              Verifying authentication and fetching your insights
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Authentication Required Banner */}
+      {error && error instanceof Error && (error.message.includes('401') || error.message.includes('Unauthorized')) && (
+        <Alert className="mb-6 border-blue-500 bg-blue-50">
+          <AlertCircle className="h-4 w-4 text-blue-600" />
+          <AlertDescription className="text-blue-800">
+            <strong>Sign in to view your analytics</strong>
+            <div className="mt-2">
+              <a href="/handler/sign-in" className="underline font-semibold hover:text-blue-900">
+                Sign in here
+              </a> to see your real repository analysis data and insights.
+            </div>
+            <div className="mt-2 text-sm">
+              Below is a preview of what you'll see once you're signed in.
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Other Errors */}
+      {error && error instanceof Error && !(error.message.includes('401') || error.message.includes('Unauthorized')) && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Error loading analytics:</strong> {error.message}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Mock Data Banner (only show if authenticated but no data) */}
+      {!isLoading && isUsingMockData && !error && analyticsData && (
+        <Alert className="mb-6 border-amber-500 bg-amber-50">
+          <AlertCircle className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="text-amber-800">
+            <strong>Demo Mode:</strong> You're viewing sample data. Start analyzing repositories to see your real analytics here!
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Key Metrics Overview */}
+      {!isLoading && (
+      <>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 mb-6">
         <Card>
           <CardHeader className="pb-2">
@@ -578,7 +712,7 @@ export default function AdvancedAnalytics() {
                       type="monotone" 
                       dataKey="analyses" 
                       stroke="#8b5cf6" 
-                      strokeDasharray={entry => entry.predicted ? "5 5" : "0"}
+                      strokeDasharray="5 5"
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -675,6 +809,8 @@ export default function AdvancedAnalytics() {
           </Card>
         </TabsContent>
       </Tabs>
+      </>
+      )}
     </div>
   );
 }

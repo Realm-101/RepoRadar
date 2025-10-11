@@ -9,7 +9,14 @@ import { githubService } from "./github";
 import { analyzeRepository, findSimilarRepositories, findSimilarByFunctionality, askAI, generateAIRecommendations } from "./gemini";
 import { insertRepositorySchema, insertAnalysisSchema, insertSavedRepositorySchema } from "@shared/schema";
 import { stripe, createOrRetrieveStripeCustomer, createSubscription, SUBSCRIPTION_PLANS, isStripeEnabled } from "./stripe";
-import { analysisRateLimit, searchRateLimit, generalApiRateLimit } from "./middleware/rateLimiter";
+import { 
+  analysisRateLimit, 
+  searchRateLimit, 
+  generalApiRateLimit,
+  authRateLimit,
+  resetRateLimit,
+  apiRateLimit
+} from "./middleware/rateLimiter";
 import { 
   validateBody, 
   validateQuery, 
@@ -32,6 +39,7 @@ import {
   getFeatureFlagsHandler, 
   updateFeatureFlagHandler 
 } from "./middleware/featureFlags";
+import { sessionSecurityMiddleware } from "./middleware/sessionValidation";
 
 interface AuthenticatedRequest extends Request {
   user: {
@@ -51,6 +59,14 @@ interface AuthenticatedRequest extends Request {
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware - must be very early to avoid conflicts
   await setupAuth(app);
+
+  // Session security middleware - validate sessions on each request
+  // Apply after auth setup but before routes
+  app.use(sessionSecurityMiddleware({
+    timeoutMs: 30 * 60 * 1000, // 30 minutes
+    validateMetadata: true,
+    detectSuspicious: true,
+  }));
 
   // Health check endpoints
   const { healthCheck, readinessCheck, livenessCheck } = await import('./health');
@@ -261,6 +277,291 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // OAuth initiation routes (with auth rate limiting)
+  app.get('/api/auth/oauth/google', authRateLimit, asyncHandler(async (req, res) => {
+    try {
+      const { getStackAuth } = await import('./auth/oauthService');
+      const stackAuth = getStackAuth();
+      
+      // Get the OAuth URL from Stack Auth
+      // This will redirect the user to Google's OAuth consent screen
+      const redirectUrl = `${process.env.BASE_URL || 'http://localhost:3000'}/api/auth/callback/google`;
+      
+      // For now, redirect to Stack Auth's OAuth handler
+      // Stack Auth will handle the OAuth flow and redirect back to our callback
+      res.redirect(`https://api.stack-auth.com/api/v1/auth/oauth/authorize?provider=google&redirect_uri=${encodeURIComponent(redirectUrl)}&client_id=${process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY}`);
+    } catch (error) {
+      console.error('Google OAuth initiation error:', error);
+      res.redirect('/handler/sign-in?error=oauth_init_failed');
+    }
+  }));
+
+  app.get('/api/auth/oauth/github', authRateLimit, asyncHandler(async (req, res) => {
+    try {
+      const { getStackAuth } = await import('./auth/oauthService');
+      const stackAuth = getStackAuth();
+      
+      // Get the OAuth URL from Stack Auth
+      // This will redirect the user to GitHub's OAuth consent screen
+      const redirectUrl = `${process.env.BASE_URL || 'http://localhost:3000'}/api/auth/callback/github`;
+      
+      // For now, redirect to Stack Auth's OAuth handler
+      // Stack Auth will handle the OAuth flow and redirect back to our callback
+      res.redirect(`https://api.stack-auth.com/api/v1/auth/oauth/authorize?provider=github&redirect_uri=${encodeURIComponent(redirectUrl)}&client_id=${process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY}`);
+    } catch (error) {
+      console.error('GitHub OAuth initiation error:', error);
+      res.redirect('/handler/sign-in?error=oauth_init_failed');
+    }
+  }));
+
+  // OAuth callback routes (with auth rate limiting)
+  app.get('/api/auth/callback/google', authRateLimit, asyncHandler(async (req, res) => {
+    const { code, state } = req.query;
+    
+    if (!code || typeof code !== 'string') {
+      return res.status(400).json({ error: 'Missing or invalid authorization code' });
+    }
+    
+    try {
+      const { getStackAuth } = await import('./auth/oauthService');
+      const stackAuth = getStackAuth();
+      
+      // Get the current user from Stack Auth
+      const stackUser = await stackAuth.getUser({ tokenStore: req as any });
+      
+      if (!stackUser) {
+        return res.status(401).json({ error: 'Authentication failed' });
+      }
+      
+      // Extract user data from Stack Auth
+      const email = stackUser.primaryEmail;
+      const googleProvider = stackUser.oauthProviders?.find(p => p.id === 'google');
+      const googleId = googleProvider?.id;
+      
+      if (!email || !googleId) {
+        return res.status(400).json({ error: 'Missing required user data from Google' });
+      }
+      
+      // Check if user exists by Google ID
+      let user = await storage.getUserByGoogleId(googleId);
+      
+      if (!user) {
+        // Check if user exists by email (for account linking)
+        user = await storage.getUserByEmail(email);
+        
+        if (user) {
+          // Link Google account to existing user
+          user = await storage.linkOAuthProvider(user.id, 'google', googleId);
+        } else {
+          // Create new user
+          user = await storage.upsertUser({
+            id: stackUser.id,
+            email,
+            firstName: stackUser.displayName?.split(' ')[0],
+            lastName: stackUser.displayName?.split(' ').slice(1).join(' '),
+            profileImageUrl: stackUser.profileImageUrl,
+            googleId,
+            oauthProviders: ['google'],
+            emailVerified: stackUser.primaryEmailVerified,
+          });
+        }
+      }
+      
+      // Initialize session with security features
+      const { SessionService } = await import('./auth/sessionService');
+      await SessionService.initializeSession(req, user.id);
+      
+      // Redirect to app with success
+      res.redirect('/dashboard');
+    } catch (error) {
+      console.error('Google OAuth callback error:', error);
+      res.redirect('/auth/error?message=google_auth_failed');
+    }
+  }));
+
+  app.get('/api/auth/callback/github', authRateLimit, asyncHandler(async (req, res) => {
+    const { code, state } = req.query;
+    
+    if (!code || typeof code !== 'string') {
+      return res.status(400).json({ error: 'Missing or invalid authorization code' });
+    }
+    
+    try {
+      const { getStackAuth } = await import('./auth/oauthService');
+      const stackAuth = getStackAuth();
+      
+      // Get the current user from Stack Auth
+      const stackUser = await stackAuth.getUser({ tokenStore: req as any });
+      
+      if (!stackUser) {
+        return res.status(401).json({ error: 'Authentication failed' });
+      }
+      
+      // Extract user data from Stack Auth
+      const email = stackUser.primaryEmail;
+      const githubProvider = stackUser.oauthProviders?.find(p => p.id === 'github');
+      const githubId = githubProvider?.id;
+      
+      if (!email || !githubId) {
+        return res.status(400).json({ error: 'Missing required user data from GitHub' });
+      }
+      
+      // Check if user exists by GitHub ID
+      let user = await storage.getUserByGithubId(githubId);
+      
+      if (!user) {
+        // Check if user exists by email (for account linking)
+        user = await storage.getUserByEmail(email);
+        
+        if (user) {
+          // Link GitHub account to existing user
+          user = await storage.linkOAuthProvider(user.id, 'github', githubId);
+        } else {
+          // Create new user
+          user = await storage.upsertUser({
+            id: stackUser.id,
+            email,
+            firstName: stackUser.displayName?.split(' ')[0],
+            lastName: stackUser.displayName?.split(' ').slice(1).join(' '),
+            profileImageUrl: stackUser.profileImageUrl,
+            githubId,
+            oauthProviders: ['github'],
+            emailVerified: stackUser.primaryEmailVerified,
+          });
+        }
+      }
+      
+      // Initialize session with security features
+      const { SessionService } = await import('./auth/sessionService');
+      await SessionService.initializeSession(req, user.id);
+      
+      // Redirect to app with success
+      res.redirect('/dashboard');
+    } catch (error) {
+      console.error('GitHub OAuth callback error:', error);
+      res.redirect('/auth/error?message=github_auth_failed');
+    }
+  }));
+
+  // Password reset endpoints (with reset rate limiting)
+  app.post('/api/auth/request-reset', resetRateLimit, asyncHandler(async (req, res) => {
+    const { email } = req.body;
+
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    try {
+      const { resetService } = await import('./auth/resetService');
+      const { emailService } = await import('./utils/emailService');
+
+      // Check if email service is configured
+      if (!emailService.isConfigured()) {
+        console.error('Email service not configured. Cannot send password reset email.');
+        // Return success to prevent email enumeration
+        return res.json({ message: 'If an account exists with this email, a password reset link has been sent.' });
+      }
+
+      // Request reset token
+      const token = await resetService.requestReset(email);
+
+      if (token) {
+        // Get user info for personalized email
+        const user = await storage.getUserByEmail(email);
+        const userName = user?.firstName || undefined;
+
+        // Send reset email
+        await emailService.sendPasswordResetEmail({
+          email,
+          resetToken: token,
+          userName,
+        });
+      }
+
+      // Always return success to prevent email enumeration
+      res.json({ message: 'If an account exists with this email, a password reset link has been sent.' });
+    } catch (error) {
+      console.error('Password reset request error:', error);
+      // Return success to prevent email enumeration
+      res.json({ message: 'If an account exists with this email, a password reset link has been sent.' });
+    }
+  }));
+
+  app.get('/api/auth/validate-reset-token', asyncHandler(async (req, res) => {
+    const { token } = req.query;
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: 'Token is required', valid: false });
+    }
+
+    try {
+      const { resetService } = await import('./auth/resetService');
+      const result = await resetService.validateToken(token);
+
+      res.json(result);
+    } catch (error) {
+      console.error('Token validation error:', error);
+      res.status(500).json({ error: 'Failed to validate token', valid: false });
+    }
+  }));
+
+  app.post('/api/auth/reset-password', asyncHandler(async (req, res) => {
+    const { token, newPassword } = req.body;
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: 'Token is required' });
+    }
+
+    if (!newPassword || typeof newPassword !== 'string') {
+      return res.status(400).json({ error: 'New password is required' });
+    }
+
+    // Validate password strength (minimum 8 characters)
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+    }
+
+    try {
+      const { resetService } = await import('./auth/resetService');
+      const { passwordService } = await import('./auth/passwordService');
+      const { emailService } = await import('./utils/emailService');
+
+      // Validate token
+      const validation = await resetService.validateToken(token);
+
+      if (!validation.valid || !validation.userId) {
+        return res.status(400).json({ error: 'Invalid or expired reset token' });
+      }
+
+      // Hash new password
+      const passwordHash = await passwordService.hash(newPassword);
+
+      // Update user password
+      await storage.updateUserPassword(validation.userId, passwordHash);
+
+      // Mark token as used
+      await resetService.markTokenAsUsed(token);
+
+      // Invalidate all other reset tokens for this user
+      await resetService.invalidateUserTokens(validation.userId);
+
+      // Invalidate all user sessions (force re-login after password change)
+      const { SessionService } = await import('./auth/sessionService');
+      await SessionService.invalidateAllUserSessions(validation.userId);
+
+      // Send confirmation email
+      const user = await storage.getUser(validation.userId);
+      if (user?.email && emailService.isConfigured()) {
+        await emailService.sendPasswordChangedEmail(user.email, user.firstName || undefined);
+      }
+
+      res.json({ message: 'Password reset successfully' });
+    } catch (error) {
+      console.error('Password reset error:', error);
+      res.status(500).json({ error: 'Failed to reset password' });
+    }
+  }));
+
   // AI Assistant endpoint
   app.post('/api/ai/ask', async (req, res) => {
     try {
@@ -292,25 +593,130 @@ export async function registerRoutes(app: Express): Promise<Server> {
     repositoryOwner: string;
   }
 
+  /**
+   * Helper function to generate empty dashboard data
+   */
+  function getEmptyDashboardData() {
+    // Generate empty activity data for last 30 days
+    const activity = [];
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      activity.push({ date: dateStr, count: 0 });
+    }
+    
+    // Generate empty trends for last 6 months
+    const trends = [];
+    for (let i = 5; i >= 0; i--) {
+      const date = new Date();
+      date.setMonth(date.getMonth() - i);
+      const monthStr = date.toLocaleDateString('en', { month: 'short' });
+      trends.push({
+        month: monthStr,
+        originality: 0,
+        completeness: 0,
+        marketability: 0,
+        monetization: 0,
+        usefulness: 0,
+      });
+    }
+    
+    return {
+      stats: {
+        totalAnalyses: 0,
+        thisMonth: 0,
+        growth: 0,
+        avgScore: 0,
+        topLanguage: 'N/A',
+        activeProjects: 0
+      },
+      activity,
+      languages: [],
+      scores: [
+        { name: 'Originality', score: 0 },
+        { name: 'Completeness', score: 0 },
+        { name: 'Marketability', score: 0 },
+        { name: 'Monetization', score: 0 },
+        { name: 'Usefulness', score: 0 },
+      ],
+      trends,
+      performance: [
+        { 
+          title: 'Best Performing', 
+          description: 'Your highest-scoring repository', 
+          value: '0',
+          unit: 'score'
+        },
+        { 
+          title: 'Improvement Rate', 
+          description: 'Score improvement over time', 
+          value: '0',
+          unit: '%'
+        },
+        { 
+          title: 'Analysis Frequency', 
+          description: 'Average analyses per week', 
+          value: '0',
+          unit: 'repos'
+        }
+      ],
+      recentAnalyses: [],
+      isEmpty: true,
+      message: 'No analyses yet. Start by analyzing your first repository!'
+    };
+  }
+
   // Analytics Dashboard endpoint
   app.get('/api/analytics/dashboard', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      // Extract userId with fallback for both session-based and token-based auth
+      const userId = req.user?.claims?.sub || (req.session as any)?.user?.id;
+      
+      // Validate userId presence
+      if (!userId) {
+        console.error('[Analytics] No userId found in request');
+        return res.status(401).json({ 
+          error: 'Unauthorized',
+          message: 'User authentication required' 
+        });
+      }
+      
+      console.log(`[Analytics] Fetching dashboard data for userId: ${userId}`);
       const analyses = await storage.getUserAnalyses(userId);
+      
+      // Handle empty data case
+      if (!analyses || analyses.length === 0) {
+        console.log(`[Analytics] No analyses found for userId: ${userId}, returning empty state`);
+        return res.json(getEmptyDashboardData());
+      }
       
       // Calculate statistics
       const now = new Date();
+      
+      // Filter analyses for this month
       const thisMonth = (analyses as AnalysisData[]).filter((a) => {
         const date = new Date(a.createdAt);
         return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
       });
       
+      // Filter analyses for last month (handle year boundary)
+      const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const lastMonth = (analyses as AnalysisData[]).filter((a) => {
         const date = new Date(a.createdAt);
-        const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         return date.getMonth() === lastMonthDate.getMonth() && date.getFullYear() === lastMonthDate.getFullYear();
       });
       
+      // Calculate monthly growth with edge case handling
+      let growth = 0;
+      if (lastMonth.length > 0) {
+        growth = Math.round(((thisMonth.length - lastMonth.length) / lastMonth.length) * 100);
+      } else if (thisMonth.length > 0) {
+        // If no data last month but data this month, show 100% growth
+        growth = 100;
+      }
+      
+      // Calculate average score
       const avgScore = analyses.length > 0 
         ? (analyses as AnalysisData[]).reduce((sum, a) => sum + ((a.originality + a.completeness + a.marketability + a.monetization + a.usefulness) / 5), 0) / analyses.length
         : 0;
@@ -324,15 +730,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       const languages = Object.entries(languageCounts).map(([name, value]) => ({ name, value }));
       
-      // Activity data (last 30 days)
+      // Activity data (last 30 days) - fixed date range calculation
       const activity = [];
+      const thirtyDaysAgo = new Date(now);
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29); // Include today, so -29 gives us 30 days
+      
       for (let i = 29; i >= 0; i--) {
-        const date = new Date();
+        const date = new Date(now);
         date.setDate(date.getDate() - i);
+        date.setHours(0, 0, 0, 0); // Normalize to start of day
         const dateStr = date.toISOString().split('T')[0];
-        const count = (analyses as AnalysisData[]).filter((a) => 
-          new Date(a.createdAt).toISOString().split('T')[0] === dateStr
-        ).length;
+        
+        const count = (analyses as AnalysisData[]).filter((a) => {
+          const analysisDate = new Date(a.createdAt);
+          analysisDate.setHours(0, 0, 0, 0); // Normalize to start of day
+          return analysisDate.toISOString().split('T')[0] === dateStr;
+        }).length;
+        
         activity.push({ date: dateStr, count });
       }
       
@@ -345,24 +759,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         { name: 'Usefulness', score: analyses.length > 0 ? (analyses as AnalysisData[]).reduce((sum, a) => sum + a.usefulness, 0) / analyses.length : 0 },
       ];
       
-      // Monthly trends (last 6 months)
+      // Monthly trends (last 6 months) - fixed to handle edge cases
       const trends = [];
       for (let i = 5; i >= 0; i--) {
-        const date = new Date();
+        const date = new Date(now);
         date.setMonth(date.getMonth() - i);
         const monthStr = date.toLocaleDateString('en', { month: 'short' });
+        
         const monthAnalyses = (analyses as AnalysisData[]).filter((a) => {
           const aDate = new Date(a.createdAt);
           return aDate.getMonth() === date.getMonth() && aDate.getFullYear() === date.getFullYear();
         });
         
+        // Handle edge cases: no data, single data point
+        const count = monthAnalyses.length;
         trends.push({
           month: monthStr,
-          originality: monthAnalyses.length > 0 ? monthAnalyses.reduce((sum, a) => sum + a.originality, 0) / monthAnalyses.length : 0,
-          completeness: monthAnalyses.length > 0 ? monthAnalyses.reduce((sum, a) => sum + a.completeness, 0) / monthAnalyses.length : 0,
-          marketability: monthAnalyses.length > 0 ? monthAnalyses.reduce((sum, a) => sum + a.marketability, 0) / monthAnalyses.length : 0,
-          monetization: monthAnalyses.length > 0 ? monthAnalyses.reduce((sum, a) => sum + a.monetization, 0) / monthAnalyses.length : 0,
-          usefulness: monthAnalyses.length > 0 ? monthAnalyses.reduce((sum, a) => sum + a.usefulness, 0) / monthAnalyses.length : 0,
+          originality: count > 0 ? monthAnalyses.reduce((sum, a) => sum + a.originality, 0) / count : 0,
+          completeness: count > 0 ? monthAnalyses.reduce((sum, a) => sum + a.completeness, 0) / count : 0,
+          marketability: count > 0 ? monthAnalyses.reduce((sum, a) => sum + a.marketability, 0) / count : 0,
+          monetization: count > 0 ? monthAnalyses.reduce((sum, a) => sum + a.monetization, 0) / count : 0,
+          usefulness: count > 0 ? monthAnalyses.reduce((sum, a) => sum + a.usefulness, 0) / count : 0,
         });
       }
       
@@ -392,7 +809,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         stats: {
           totalAnalyses: analyses.length,
           thisMonth: thisMonth.length,
-          growth: lastMonth.length > 0 ? Math.round(((thisMonth.length - lastMonth.length) / lastMonth.length) * 100) : 0,
+          growth, // Use the calculated growth value with edge case handling
           avgScore,
           topLanguage: languages.length > 0 ? languages.sort((a, b) => b.value - a.value)[0].name : 'N/A',
           activeProjects: new Set((analyses as AnalysisData[]).map((a) => a.repositoryId)).size
@@ -416,6 +833,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to fetch analytics data" });
     }
   });
+
+  // Advanced Analytics endpoint
+  app.get('/api/analytics/advanced', isAuthenticated, asyncHandler(async (req: AuthenticatedRequest, res) => {
+    try {
+      // Extract userId for logging and validation
+      const userId = req.user?.claims?.sub;
+      
+      if (!userId) {
+        console.error('[Advanced Analytics] No userId found in authenticated request');
+        return res.status(401).json({ 
+          error: 'Unauthorized',
+          message: 'User authentication required',
+          code: 'AUTH_REQUIRED'
+        });
+      }
+
+      console.log(`[Advanced Analytics] Fetching data for user: ${userId}`);
+
+      const { getAdvancedAnalytics } = await import('./advancedAnalytics');
+      const timeRange = (req.query.timeRange as string) || '30d';
+      
+      // Validate timeRange parameter
+      const validTimeRanges = ['7d', '30d', '90d', '1y'];
+      if (!validTimeRanges.includes(timeRange)) {
+        return res.status(400).json({
+          error: 'Invalid time range',
+          message: 'Time range must be one of: 7d, 30d, 90d, 1y',
+          code: 'INVALID_TIME_RANGE'
+        });
+      }
+
+      const data = await getAdvancedAnalytics(timeRange);
+      
+      // Set authentication headers in response
+      res.setHeader('X-Authenticated-User', userId);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      
+      console.log(`[Advanced Analytics] Successfully fetched data for user: ${userId}`);
+      res.json(data);
+    } catch (error) {
+      console.error('[Advanced Analytics] Error fetching analytics:', error);
+      
+      // Return proper error response
+      res.status(500).json({
+        error: 'Failed to fetch advanced analytics',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        code: 'ANALYTICS_FETCH_ERROR'
+      });
+    }
+  }));
 
   // Stripe subscription endpoint
   app.post('/api/create-subscription', isAuthenticated, async (req: AuthenticatedRequest, res) => {
@@ -750,6 +1217,116 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   }));
 
+  // Reanalyze repository endpoint
+  app.post('/api/repositories/:id/reanalyze', isAuthenticated, analysisRateLimit, validateParams(repositoryIdSchema), asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { id: repositoryId } = req.params;
+    const userId = req.user.claims.sub;
+
+    // Check if repository exists
+    const repository = await storage.getRepository(repositoryId);
+    if (!repository) {
+      return res.status(404).json({ error: 'Repository not found' });
+    }
+
+    // Check if reanalysis is allowed (rate limit - 1 per repository per hour)
+    const now = new Date();
+    if (repository.reanalysisLockedUntil && repository.reanalysisLockedUntil > now) {
+      const waitMinutes = Math.ceil((repository.reanalysisLockedUntil.getTime() - now.getTime()) / 60000);
+      return res.status(429).json({ 
+        error: 'Reanalysis rate limit exceeded',
+        message: `Please wait ${waitMinutes} minute(s) before reanalyzing this repository`,
+        retryAfter: waitMinutes 
+      });
+    }
+
+    // Delete existing analysis from database
+    await storage.deleteRepositoryAnalysis(repositoryId);
+
+    // Clear Redis cache if present (optional - will be handled by cache service)
+    // The cache will naturally expire or be overwritten
+
+    // Fetch fresh repository data from GitHub
+    const parsed = githubService.parseRepositoryUrl(repository.htmlUrl);
+    if (!parsed) {
+      return res.status(400).json({ error: 'Invalid repository URL' });
+    }
+
+    const { owner, repo } = parsed;
+    const repoDetails = await githubService.getRepositoryWithDetails(owner, repo);
+    if (!repoDetails) {
+      return res.status(404).json({ error: 'Repository not found on GitHub' });
+    }
+
+    const { repository: ghRepo, languages, readme } = repoDetails;
+
+    // Update repository data
+    const updatedRepoData = {
+      id: ghRepo.id.toString(),
+      name: ghRepo.name,
+      fullName: ghRepo.full_name,
+      owner: ghRepo.owner.login,
+      description: ghRepo.description,
+      language: ghRepo.language,
+      stars: ghRepo.stargazers_count,
+      forks: ghRepo.forks_count,
+      watchers: ghRepo.watchers_count,
+      size: ghRepo.size,
+      isPrivate: ghRepo.private,
+      htmlUrl: ghRepo.html_url,
+      cloneUrl: ghRepo.clone_url,
+      languages,
+      topics: ghRepo.topics || [],
+      lastAnalyzed: now,
+    };
+
+    const updatedRepository = await storage.upsertRepository(updatedRepoData);
+
+    // Run new analysis with Gemini
+    const analysisResult = await analyzeRepository({
+      name: ghRepo.name,
+      description: ghRepo.description || '',
+      language: ghRepo.language || 'Unknown',
+      stars: ghRepo.stargazers_count,
+      forks: ghRepo.forks_count,
+      size: ghRepo.size,
+      languages,
+      topics: ghRepo.topics || [],
+      readme: readme || undefined,
+    });
+
+    // Store new analysis
+    const analysisData = {
+      repositoryId: updatedRepository.id,
+      userId,
+      ...analysisResult,
+    };
+
+    const validatedAnalysisData = insertAnalysisSchema.parse(analysisData);
+    const analysis = await storage.createAnalysis(validatedAnalysisData);
+
+    // Update repository with reanalysis metadata
+    await storage.updateRepositoryReanalysis(repositoryId, {
+      lastReanalyzedBy: userId,
+      reanalysisLockedUntil: new Date(now.getTime() + 60 * 60 * 1000), // Lock for 1 hour
+      analysisCount: (repository.analysisCount || 0) + 1,
+    });
+
+    // Track reanalysis event
+    await trackEvent(req, 'repository_reanalysis', 'analysis', {
+      repositoryId: updatedRepository.id,
+      repositoryName: updatedRepository.fullName,
+      language: updatedRepository.language,
+      stars: updatedRepository.stars,
+      success: true,
+    }).catch(error => console.error('Error tracking reanalysis event:', error));
+
+    res.json({
+      repository: updatedRepository,
+      analysis,
+      message: 'Repository reanalyzed successfully'
+    });
+  }));
+
   // Recent repositories (must be before :id route)
   app.get('/api/repositories/recent', repositoryPagination, async (req: Request & { pagination: { limit: number; offset: number } }, res: Response & { paginate: (data: unknown[], total: number) => unknown }) => {
     try {
@@ -977,8 +1554,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Saved repositories (protected routes)
-  app.post('/api/saved-repositories', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  // Saved repositories (protected routes with API rate limiting)
+  app.post('/api/saved-repositories', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const { repositoryId } = req.body;
@@ -998,7 +1575,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/saved-repositories/:repositoryId', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  app.delete('/api/saved-repositories/:repositoryId', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const { repositoryId } = req.params;
@@ -1011,7 +1588,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/saved-repositories', isAuthenticated, repositoryPagination, async (req: AuthenticatedRequest & { pagination: { limit: number; offset: number } }, res: Response & { paginate: (data: unknown[], total: number) => unknown }) => {
+  app.get('/api/saved-repositories', isAuthenticated, apiRateLimit, repositoryPagination, async (req: AuthenticatedRequest & { pagination: { limit: number; offset: number } }, res: Response & { paginate: (data: unknown[], total: number) => unknown }) => {
     try {
       const userId = req.user.claims.sub;
       const { limit, offset } = req.pagination;
@@ -1031,8 +1608,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // User Profile & Preferences Routes (Protected - Pro/Enterprise only)
-  app.get('/api/user/preferences', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  // User Profile & Preferences Routes (Protected - Pro/Enterprise only with API rate limiting)
+  app.get('/api/user/preferences', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -1049,7 +1626,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/user/preferences', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  app.put('/api/user/preferences', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -1066,8 +1643,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Bookmarks Routes
-  app.get('/api/user/bookmarks', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  // Bookmarks Routes (with API rate limiting)
+  app.get('/api/user/bookmarks', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -1084,7 +1661,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/user/bookmarks', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  app.post('/api/user/bookmarks', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -1106,7 +1683,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/user/bookmarks/:repositoryId', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  app.delete('/api/user/bookmarks/:repositoryId', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -1123,8 +1700,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Tags Routes
-  app.get('/api/user/tags', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  // Tags Routes (with API rate limiting)
+  app.get('/api/user/tags', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -1141,7 +1718,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/user/tags', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  app.post('/api/user/tags', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -1159,7 +1736,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/repositories/:repositoryId/tags', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  app.post('/api/repositories/:repositoryId/tags', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -1176,8 +1753,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Collections Routes  
-  app.get('/api/user/collections', isAuthenticated, async (req: any, res) => {
+  // Collections Routes (with API rate limiting)
+  app.get('/api/user/collections', isAuthenticated, apiRateLimit, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -1193,7 +1770,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/user/collections', isAuthenticated, async (req: any, res) => {
+  app.post('/api/user/collections', isAuthenticated, apiRateLimit, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -1209,7 +1786,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/collections/:collectionId/items', isAuthenticated, async (req: any, res) => {
+  app.post('/api/collections/:collectionId/items', isAuthenticated, apiRateLimit, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);

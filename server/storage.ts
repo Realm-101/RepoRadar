@@ -80,8 +80,10 @@ import { eq, and, desc, sql } from "drizzle-orm";
 export interface IStorage {
   // User operations
   getUser(id: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
   updateUserStripeCustomerId(userId: string, stripeCustomerId: string): Promise<User>;
+  updateUserPassword(userId: string, passwordHash: string): Promise<User>;
   updateUserSubscription(userId: string, subscription: {
     stripeSubscriptionId?: string;
     subscriptionTier?: string;
@@ -91,6 +93,11 @@ export interface IStorage {
   getUserByStripeCustomerId(stripeCustomerId: string): Promise<User | undefined>;
   resetUserAnalysisCount(userId: string): Promise<User>;
   incrementUserAnalysisCount(userId: string): Promise<User>;
+  getUserByGoogleId(googleId: string): Promise<User | undefined>;
+  getUserByGithubId(githubId: string): Promise<User | undefined>;
+  linkOAuthProvider(userId: string, provider: 'google' | 'github', providerId: string): Promise<User>;
+  updateUserLastLogin(userId: string, ip: string): Promise<User>;
+  invalidateUserSessions(userId: string): Promise<User>;
 
   // Repository operations
   getRepository(id: string): Promise<Repository | undefined>;
@@ -104,9 +111,11 @@ export interface IStorage {
   // Analysis operations
   getAnalysis(repositoryId: string, userId?: string): Promise<RepositoryAnalysis | undefined>;
   createAnalysis(analysis: InsertAnalysis): Promise<RepositoryAnalysis>;
+  deleteRepositoryAnalysis(repositoryId: string): Promise<void>;
   getRecentAnalyses(userId?: string, limit?: number): Promise<(RepositoryAnalysis & { repository: Repository })[]>;
   getRecentAnalysesPaginated(userId?: string, limit?: number, offset?: number): Promise<(RepositoryAnalysis & { repository: Repository })[]>;
   getAnalysisCount(userId?: string): Promise<number>;
+  updateRepositoryReanalysis(repositoryId: string, data: { lastReanalyzedBy: string; reanalysisLockedUntil: Date; analysisCount: number }): Promise<void>;
 
   // Saved repositories operations
   saveRepository(userId: string, repositoryId: string): Promise<SavedRepository>;
@@ -166,6 +175,11 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
   async upsertUser(userData: UpsertUser): Promise<User> {
     const [user] = await db
       .insert(users)
@@ -210,6 +224,18 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async updateUserPassword(userId: string, passwordHash: string): Promise<User> {
+    const [user] = await db
+      .update(users)
+      .set({ 
+        passwordHash,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
+    return user;
+  }
+
   async getUserByStripeCustomerId(stripeCustomerId: string): Promise<User | undefined> {
     const [user] = await db
       .select()
@@ -240,6 +266,146 @@ export class DatabaseStorage implements IStorage {
       })
       .where(eq(users.id, userId))
       .returning();
+    return user;
+  }
+
+  async getUserByGoogleId(googleId: string): Promise<User | undefined> {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.googleId, googleId));
+    return user;
+  }
+
+  async getUserByGithubId(githubId: string): Promise<User | undefined> {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.githubId, githubId));
+    return user;
+  }
+
+  async linkOAuthProvider(userId: string, provider: 'google' | 'github', providerId: string): Promise<User> {
+    const updateData: any = {
+      updatedAt: new Date(),
+    };
+    
+    // Set the provider-specific ID field
+    if (provider === 'google') {
+      updateData.googleId = providerId;
+    } else if (provider === 'github') {
+      updateData.githubId = providerId;
+    }
+    
+    // Update the oauthProviders array
+    updateData.oauthProviders = sql`
+      CASE 
+        WHEN ${users.oauthProviders} IS NULL THEN ARRAY[${provider}]::text[]
+        WHEN NOT (${provider} = ANY(${users.oauthProviders})) THEN array_append(${users.oauthProviders}, ${provider})
+        ELSE ${users.oauthProviders}
+      END
+    `;
+    
+    const [user] = await db
+      .update(users)
+      .set(updateData)
+      .where(eq(users.id, userId))
+      .returning();
+    
+    return user;
+  }
+
+  async updateUserLastLogin(userId: string, ip: string): Promise<User> {
+    const [user] = await db
+      .update(users)
+      .set({
+        lastLoginAt: new Date(),
+        lastLoginIp: ip,
+        failedLoginAttempts: 0, // Reset failed attempts on successful login
+        accountLockedUntil: null, // Clear any account lock
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
+    
+    return user;
+  }
+
+  async incrementFailedLoginAttempts(userId: string): Promise<User> {
+    const [user] = await db
+      .update(users)
+      .set({
+        failedLoginAttempts: sql`COALESCE(${users.failedLoginAttempts}, 0) + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
+    
+    return user;
+  }
+
+  async lockAccount(userId: string, lockDurationMinutes: number = 15): Promise<User> {
+    const lockUntil = new Date();
+    lockUntil.setMinutes(lockUntil.getMinutes() + lockDurationMinutes);
+    
+    const [user] = await db
+      .update(users)
+      .set({
+        accountLockedUntil: lockUntil,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
+    
+    return user;
+  }
+
+  async unlockAccount(userId: string): Promise<User> {
+    const [user] = await db
+      .update(users)
+      .set({
+        accountLockedUntil: null,
+        failedLoginAttempts: 0,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
+    
+    return user;
+  }
+
+  async isAccountLocked(userId: string): Promise<boolean> {
+    const [user] = await db
+      .select({ accountLockedUntil: users.accountLockedUntil })
+      .from(users)
+      .where(eq(users.id, userId));
+    
+    if (!user || !user.accountLockedUntil) {
+      return false;
+    }
+    
+    // Check if lock has expired
+    const now = new Date();
+    if (user.accountLockedUntil <= now) {
+      // Lock has expired, unlock the account
+      await this.unlockAccount(userId);
+      return false;
+    }
+    
+    return true;
+  }
+
+  async invalidateUserSessions(userId: string): Promise<User> {
+    // Mark user as requiring re-authentication by updating a timestamp
+    // This can be checked against session creation time
+    const [user] = await db
+      .update(users)
+      .set({
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
+    
     return user;
   }
 
@@ -325,6 +491,23 @@ export class DatabaseStorage implements IStorage {
       .values(analysis)
       .returning();
     return newAnalysis;
+  }
+
+  async deleteRepositoryAnalysis(repositoryId: string): Promise<void> {
+    await db
+      .delete(repositoryAnalyses)
+      .where(eq(repositoryAnalyses.repositoryId, repositoryId));
+  }
+
+  async updateRepositoryReanalysis(repositoryId: string, data: { lastReanalyzedBy: string; reanalysisLockedUntil: Date; analysisCount: number }): Promise<void> {
+    await db
+      .update(repositories)
+      .set({
+        lastReanalyzedBy: data.lastReanalyzedBy,
+        reanalysisLockedUntil: data.reanalysisLockedUntil,
+        analysisCount: data.analysisCount,
+      })
+      .where(eq(repositories.id, repositoryId));
   }
 
   async getRecentAnalyses(userId?: string, limit = 10): Promise<(RepositoryAnalysis & { repository: Repository })[]> {
@@ -417,28 +600,36 @@ export class DatabaseStorage implements IStorage {
     primaryLanguage?: string;
     createdAt: Date;
   }>> {
-    const results = await db
-      .select({
-        id: repositoryAnalyses.id,
-        repositoryId: repositoryAnalyses.repositoryId,
-        repositoryName: repositories.name,
-        repositoryOwner: repositories.owner,
-        primaryLanguage: repositories.language,
-        userId: repositoryAnalyses.userId,
-        originality: repositoryAnalyses.originality,
-        completeness: repositoryAnalyses.completeness,
-        marketability: repositoryAnalyses.marketability,
-        monetization: repositoryAnalyses.monetization,
-        usefulness: repositoryAnalyses.usefulness,
-        overallScore: repositoryAnalyses.overallScore,
-        createdAt: repositoryAnalyses.createdAt,
-      })
-      .from(repositoryAnalyses)
-      .innerJoin(repositories, eq(repositoryAnalyses.repositoryId, repositories.id))
-      .where(eq(repositoryAnalyses.userId, userId))
-      .orderBy(desc(repositoryAnalyses.createdAt));
-    
-    return results;
+    try {
+      console.log(`[Storage] Fetching analyses for userId: ${userId}`);
+      
+      const results = await db
+        .select({
+          id: repositoryAnalyses.id,
+          repositoryId: repositoryAnalyses.repositoryId,
+          repositoryName: repositories.name,
+          repositoryOwner: repositories.owner,
+          primaryLanguage: repositories.language,
+          userId: repositoryAnalyses.userId,
+          originality: repositoryAnalyses.originality,
+          completeness: repositoryAnalyses.completeness,
+          marketability: repositoryAnalyses.marketability,
+          monetization: repositoryAnalyses.monetization,
+          usefulness: repositoryAnalyses.usefulness,
+          overallScore: repositoryAnalyses.overallScore,
+          createdAt: repositoryAnalyses.createdAt,
+        })
+        .from(repositoryAnalyses)
+        .innerJoin(repositories, eq(repositoryAnalyses.repositoryId, repositories.id))
+        .where(eq(repositoryAnalyses.userId, userId))
+        .orderBy(desc(repositoryAnalyses.createdAt));
+      
+      console.log(`[Storage] Found ${results.length} analyses for userId: ${userId}`);
+      return results;
+    } catch (error) {
+      console.error(`[Storage] Error fetching analyses for userId ${userId}:`, error);
+      throw new Error(`Failed to fetch user analyses: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   // Saved repositories operations

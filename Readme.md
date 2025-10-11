@@ -86,6 +86,113 @@ docker-compose -f docker/docker-compose.performance.yml up -d
 docker-compose -f docker/docker-compose.performance.yml up -d --scale reporadar=3
 ```
 
+## 🔐 Authentication & Security
+
+RepoRadar includes production-grade authentication and security features:
+
+### Authentication Methods
+
+#### Password Authentication
+- **Secure Password Hashing**: bcrypt with configurable cost factor (default: 12)
+- **Password Strength Validation**: Minimum 8 characters required
+- **Account Lockout**: Automatic lockout after 5 failed attempts (15-minute duration)
+- **Password Reset**: Secure email-based password reset with time-limited tokens
+
+#### OAuth Social Login (Stack Auth)
+- **Google OAuth**: Sign in with Google account
+- **GitHub OAuth**: Sign in with GitHub account
+- **Account Linking**: Automatically link OAuth providers to existing accounts
+- **Profile Sync**: Sync profile information from OAuth providers
+
+### Security Features
+
+#### Rate Limiting
+- **Login Attempts**: 5 per 15 minutes per IP address
+- **Password Reset**: 3 per hour per email address
+- **API Calls**: Tier-based limits (Free: 100/hour, Pro: 1000/hour)
+- **Analysis Requests**: Daily limits based on subscription tier
+
+#### Session Security
+- **Session Regeneration**: New session ID on login and privilege changes
+- **Session Metadata**: Track IP address and user agent
+- **Session Timeout**: Configurable timeout with sliding window
+- **Suspicious Activity Detection**: Automatic session invalidation
+
+#### HTTPS & Security Headers
+- **HTTPS Enforcement**: Automatic redirect in production
+- **HSTS Headers**: HTTP Strict Transport Security enabled
+- **Security Headers**: X-Content-Type-Options, X-Frame-Options, CSP
+- **Secure Cookies**: HttpOnly, Secure, and SameSite flags
+
+### Configuration
+
+#### Required Environment Variables
+```bash
+# Database
+DATABASE_URL=postgresql://user:password@host:5432/database
+
+# Session Security
+SESSION_SECRET=your_secure_random_secret_here
+SESSION_ENCRYPTION_KEY=your_64_char_hex_key_here
+
+# Password Security
+BCRYPT_ROUNDS=12
+```
+
+#### OAuth Setup (Optional)
+```bash
+# Stack Auth Configuration
+NEXT_PUBLIC_STACK_PROJECT_ID=your_project_id
+NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=your_client_key
+STACK_SECRET_SERVER_KEY=your_secret_key
+```
+
+Get your Stack Auth credentials from [Neon Console → Auth](https://console.neon.tech).
+
+#### Email Service (Optional)
+```bash
+# Resend Configuration
+RESEND_API_KEY=your_resend_api_key
+EMAIL_FROM=noreply@yourdomain.com
+EMAIL_FROM_NAME=Your App Name
+PASSWORD_RESET_URL=https://yourdomain.com/reset-password
+```
+
+Get your Resend API key from [resend.com/api-keys](https://resend.com/api-keys).
+
+#### Rate Limiting Configuration
+```bash
+# Storage: memory (single instance), redis (multi-instance), or postgres (fallback)
+RATE_LIMIT_STORAGE=memory
+RATE_LIMIT_REDIS_URL=redis://localhost:6379
+
+# Authentication Rate Limits
+RATE_LIMIT_AUTH_LOGIN_LIMIT=5
+RATE_LIMIT_AUTH_LOGIN_WINDOW=900000      # 15 minutes
+RATE_LIMIT_AUTH_RESET_LIMIT=3
+RATE_LIMIT_AUTH_RESET_WINDOW=3600000     # 1 hour
+```
+
+#### HTTPS Configuration
+```bash
+# Production Settings
+FORCE_HTTPS=true
+HSTS_MAX_AGE=31536000                    # 1 year
+HSTS_INCLUDE_SUBDOMAINS=true
+
+# Security Headers
+SECURITY_HEADERS_ENABLED=true
+CSP_ENABLED=true
+```
+
+### Setup Guides
+
+For detailed setup instructions, see:
+- [OAuth Setup Guide](docs/OAUTH_SETUP.md) - Configure Google and GitHub OAuth
+- [Email Service Guide](docs/EMAIL_SERVICE.md) - Configure password reset emails
+- [Rate Limiting Guide](docs/RATE_LIMITING.md) - Configure rate limiting
+- [Security Best Practices](docs/SECURITY_BEST_PRACTICES.md) - Production security checklist
+
 ## ⚙️ Performance Configuration
 
 RepoRadar includes a comprehensive performance configuration system. All settings can be configured through environment variables or the centralized configuration manager.
@@ -206,7 +313,7 @@ RepoRadar is built with performance as a core principle, featuring:
 ### External Integrations
 - **GitHub API**: Repository data with optimization
 - **Stripe**: Payment processing for subscriptions
-- **Authentication**: Replit OIDC with Passport.js
+- **Authentication**: Stack Auth (OAuth) with secure password hashing
 - **Monitoring**: Performance metrics and alerting
 
 ## 🛠️ Development

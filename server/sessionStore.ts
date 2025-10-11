@@ -145,9 +145,11 @@ export function getSessionConfig(store: session.Store): session.SessionOptions {
     name: 'reporadar.sid',
     cookie: {
       secure: isProduction, // HTTPS only in production
-      httpOnly: true, // Prevent XSS
+      httpOnly: true, // Prevent XSS attacks
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
-      sameSite: 'lax', // CSRF protection
+      sameSite: isProduction ? 'strict' : 'lax', // Strict CSRF protection in production
+      path: '/', // Cookie available for entire domain
+      domain: isProduction ? process.env.COOKIE_DOMAIN : undefined, // Set domain in production if needed
     },
     rolling: true, // Reset expiration on each request
   };

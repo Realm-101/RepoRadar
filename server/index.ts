@@ -5,8 +5,15 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { gracefulShutdown } from "./gracefulShutdown";
 import { instanceId, logger } from "./instanceId";
+import { enforceHTTPS, setSecurityHeaders } from "./middleware/httpsEnforcement";
+import { initializeConfiguration } from "./config/validation";
 
 const app = express();
+
+// Apply security middleware first (before parsing body)
+app.use(enforceHTTPS);
+app.use(setSecurityHeaders);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
@@ -47,6 +54,14 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Validate configuration before starting
+  try {
+    initializeConfiguration();
+  } catch (error) {
+    logger.error('Configuration validation failed', { error });
+    process.exit(1);
+  }
+
   // Log instance startup
   logger.info('Starting application instance', instanceId.getMetadata());
 

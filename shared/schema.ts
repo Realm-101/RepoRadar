@@ -26,6 +26,38 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
+// Password reset tokens table
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  token: varchar("token", { length: 64 }).notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_reset_tokens_token").on(table.token),
+  index("idx_reset_tokens_user").on(table.userId),
+  index("idx_reset_tokens_expires").on(table.expiresAt),
+]);
+
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+export type InsertPasswordResetToken = typeof passwordResetTokens.$inferInsert;
+
+// Rate limits table (fallback when Redis is not available)
+export const rateLimits = pgTable("rate_limits", {
+  id: serial("id").primaryKey(),
+  key: varchar("key", { length: 255 }).notNull().unique(),
+  count: integer("count").notNull().default(0),
+  resetAt: timestamp("reset_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_rate_limits_key").on(table.key),
+  index("idx_rate_limits_reset").on(table.resetAt),
+]);
+
+export type RateLimit = typeof rateLimits.$inferSelect;
+export type InsertRateLimit = typeof rateLimits.$inferInsert;
+
 // User storage table.
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -33,6 +65,23 @@ export const users = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
+  
+  // Authentication fields
+  passwordHash: varchar("password_hash", { length: 255 }),
+  emailVerified: boolean("email_verified").default(false),
+  emailVerifiedAt: timestamp("email_verified_at"),
+  
+  // OAuth fields
+  googleId: varchar("google_id", { length: 255 }),
+  githubId: varchar("github_id", { length: 255 }),
+  oauthProviders: jsonb("oauth_providers").default([]).$type<string[]>(),
+  
+  // Security fields
+  lastLoginAt: timestamp("last_login_at"),
+  lastLoginIp: varchar("last_login_ip", { length: 45 }),
+  failedLoginAttempts: integer("failed_login_attempts").default(0),
+  accountLockedUntil: timestamp("account_locked_until"),
+  
   subscriptionTier: varchar("subscription_tier").default("free"), // free, pro, enterprise
   stripeCustomerId: varchar("stripe_customer_id"),
   stripeSubscriptionId: varchar("stripe_subscription_id"),
@@ -63,6 +112,9 @@ export const repositories = pgTable("repositories", {
   languages: jsonb("languages"), // Object with language percentages
   topics: text("topics").array(), // Array of topic strings
   lastAnalyzed: timestamp("last_analyzed"),
+  analysisCount: integer("analysis_count").default(0),
+  lastReanalyzedBy: varchar("last_reanalyzed_by").references(() => users.id),
+  reanalysisLockedUntil: timestamp("reanalysis_locked_until"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -581,6 +633,45 @@ export const analyticsEventsRelations = relations(analyticsEvents, ({ one }) => 
     references: [users.id],
   }),
 }));
+
+// Advanced Analytics aggregation tables
+export const dailyAnalytics = pgTable("daily_analytics", {
+  id: serial("id").primaryKey(),
+  date: timestamp("date").notNull(),
+  totalAnalyses: integer("total_analyses").default(0),
+  totalRepositories: integer("total_repositories").default(0),
+  activeUsers: integer("active_users").default(0),
+  avgScore: real("avg_score"),
+  avgOriginality: real("avg_originality"),
+  avgCompleteness: real("avg_completeness"),
+  avgMarketability: real("avg_marketability"),
+  avgMonetization: real("avg_monetization"),
+  avgUsefulness: real("avg_usefulness"),
+  apiCalls: integer("api_calls").default(0),
+  avgResponseTime: integer("avg_response_time"), // in milliseconds
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_daily_analytics_date").on(table.date),
+]);
+
+export type DailyAnalytics = typeof dailyAnalytics.$inferSelect;
+export type InsertDailyAnalytics = typeof dailyAnalytics.$inferInsert;
+
+export const languageAnalytics = pgTable("language_analytics", {
+  id: serial("id").primaryKey(),
+  language: varchar("language", { length: 100 }).notNull(),
+  count: integer("count").default(0),
+  avgScore: real("avg_score"),
+  totalStars: integer("total_stars").default(0),
+  period: varchar("period", { length: 20 }).notNull(), // 7d, 30d, 90d, all
+  lastUpdated: timestamp("last_updated").defaultNow(),
+}, (table) => [
+  index("idx_language_analytics_language").on(table.language),
+  index("idx_language_analytics_period").on(table.period),
+]);
+
+export type LanguageAnalytics = typeof languageAnalytics.$inferSelect;
+export type InsertLanguageAnalytics = typeof languageAnalytics.$inferInsert;
 
 export type Repository = typeof repositories.$inferSelect;
 export type InsertRepository = z.infer<typeof insertRepositorySchema>;
