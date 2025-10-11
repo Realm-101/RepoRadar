@@ -100,6 +100,19 @@ export function validateConfiguration(): ConfigValidationResult {
       requiredVars: ['REDIS_URL'],
       optionalVars: ['REDIS_KEY_PREFIX'],
     },
+    {
+      name: 'Stripe Payments',
+      enabled: !!(process.env.STRIPE_SECRET_KEY),
+      requiredVars: [
+        'STRIPE_SECRET_KEY',
+        'STRIPE_PUBLISHABLE_KEY',
+        'STRIPE_WEBHOOK_SECRET',
+        'STRIPE_PRO_PRICE_ID',
+        'STRIPE_ENTERPRISE_PRICE_ID',
+        'APP_URL',
+      ],
+      optionalVars: [],
+    },
   ];
 
   // Validate each feature
@@ -135,6 +148,34 @@ export function validateConfiguration(): ConfigValidationResult {
     errors.push('RATE_LIMIT_STORAGE is set to redis but RATE_LIMIT_REDIS_URL is not configured');
   }
 
+  // Validate Stripe configuration
+  if (process.env.STRIPE_SECRET_KEY) {
+    // Check for test vs production keys
+    const isTestKey = process.env.STRIPE_SECRET_KEY.startsWith('sk_test_');
+    const isProdKey = process.env.STRIPE_SECRET_KEY.startsWith('sk_live_');
+    
+    if (!isTestKey && !isProdKey) {
+      errors.push('STRIPE_SECRET_KEY must start with sk_test_ or sk_live_');
+    }
+
+    if (process.env.NODE_ENV === 'production' && isTestKey) {
+      warnings.push('Using Stripe test keys in production environment');
+    }
+
+    if (process.env.NODE_ENV !== 'production' && isProdKey) {
+      warnings.push('Using Stripe live keys in non-production environment');
+    }
+
+    // Validate APP_URL format
+    if (process.env.APP_URL) {
+      try {
+        new URL(process.env.APP_URL);
+      } catch {
+        errors.push('APP_URL must be a valid URL (e.g., https://example.com)');
+      }
+    }
+  }
+
   // Production-specific validations
   if (process.env.NODE_ENV === 'production') {
     if (!process.env.FORCE_HTTPS || process.env.FORCE_HTTPS !== 'true') {
@@ -151,6 +192,14 @@ export function validateConfiguration(): ConfigValidationResult {
 
     if (!process.env.USE_REDIS_SESSIONS || process.env.USE_REDIS_SESSIONS !== 'true') {
       warnings.push('Redis sessions are not enabled. Consider enabling for multi-instance deployments.');
+    }
+
+    if (!process.env.STRIPE_SECRET_KEY) {
+      warnings.push('Stripe is not configured. Payment processing will not be available.');
+    }
+
+    if (!process.env.APP_URL) {
+      warnings.push('APP_URL is not configured. This is required for Stripe checkout redirects.');
     }
   }
 
@@ -169,6 +218,7 @@ export function logConfigurationSummary(): void {
     'Password Authentication': true,
     'OAuth (Stack Auth)': !!(process.env.NEXT_PUBLIC_STACK_PROJECT_ID),
     'Email Service': !!(process.env.RESEND_API_KEY),
+    'Stripe Payments': !!(process.env.STRIPE_SECRET_KEY),
     'Rate Limiting': true,
     'HTTPS Enforcement': process.env.FORCE_HTTPS === 'true',
     'Redis Sessions': process.env.USE_REDIS_SESSIONS === 'true',
@@ -203,6 +253,17 @@ export function logConfigurationSummary(): void {
   log(`  Timeout: ${(parseInt(process.env.SESSION_TIMEOUT || '604800000') / 86400000).toFixed(0)} days`);
   log(`  Regenerate on login: ${process.env.SESSION_REGENERATE_ON_LOGIN !== 'false' ? 'Yes' : 'No'}`);
 
+  if (process.env.STRIPE_SECRET_KEY) {
+    log('');
+    log('Stripe Configuration:');
+    const keyType = process.env.STRIPE_SECRET_KEY.startsWith('sk_test_') ? 'Test' : 'Live';
+    log(`  Mode: ${keyType}`);
+    log(`  Pro Price ID: ${process.env.STRIPE_PRO_PRICE_ID ? '✓ Configured' : '✗ Not configured'}`);
+    log(`  Enterprise Price ID: ${process.env.STRIPE_ENTERPRISE_PRICE_ID ? '✓ Configured' : '✗ Not configured'}`);
+    log(`  Webhook Secret: ${process.env.STRIPE_WEBHOOK_SECRET ? '✓ Configured' : '✗ Not configured'}`);
+    log(`  App URL: ${process.env.APP_URL || 'Not configured'}`);
+  }
+
   log('='.repeat(60) + '\n');
 }
 
@@ -223,6 +284,17 @@ export function getFeatureStatus() {
     passwordReset: {
       enabled: !!(process.env.RESEND_API_KEY),
       emailService: process.env.RESEND_API_KEY ? 'resend' : 'none',
+    },
+    stripe: {
+      enabled: !!(process.env.STRIPE_SECRET_KEY && 
+                  process.env.STRIPE_PUBLISHABLE_KEY && 
+                  process.env.STRIPE_WEBHOOK_SECRET &&
+                  process.env.STRIPE_PRO_PRICE_ID &&
+                  process.env.STRIPE_ENTERPRISE_PRICE_ID &&
+                  process.env.APP_URL),
+      mode: process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_') ? 'test' : 'live',
+      proPriceId: process.env.STRIPE_PRO_PRICE_ID,
+      enterprisePriceId: process.env.STRIPE_ENTERPRISE_PRICE_ID,
     },
     rateLimiting: {
       enabled: true,

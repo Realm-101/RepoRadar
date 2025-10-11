@@ -70,6 +70,10 @@ export function getSubscriptionLimits(tier: SubscriptionTier) {
 }
 
 export async function createOrRetrieveStripeCustomer(email: string, userId: string) {
+  if (!stripe) {
+    throw new Error('Stripe is not configured');
+  }
+
   try {
     // Try to find existing customer
     const existingCustomers = await stripe.customers.list({
@@ -96,7 +100,137 @@ export async function createOrRetrieveStripeCustomer(email: string, userId: stri
   }
 }
 
+export async function createCheckoutSession(
+  userId: string,
+  email: string,
+  priceId: string
+): Promise<Stripe.Checkout.Session> {
+  if (!stripe) {
+    throw new Error('Stripe is not configured');
+  }
+
+  try {
+    // Create or retrieve customer
+    const customer = await createOrRetrieveStripeCustomer(email, userId);
+
+    // Create checkout session
+    const session = await stripe.checkout.sessions.create({
+      customer: customer.id,
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
+        },
+      ],
+      success_url: `${process.env.APP_URL}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.APP_URL}/subscription`,
+      metadata: {
+        userId,
+      },
+      allow_promotion_codes: true,
+      billing_address_collection: 'auto',
+    });
+
+    return session;
+  } catch (error) {
+    console.error('Error creating checkout session:', error);
+    throw error;
+  }
+}
+
+export async function createCustomerPortalSession(
+  customerId: string
+): Promise<Stripe.BillingPortal.Session> {
+  if (!stripe) {
+    throw new Error('Stripe is not configured');
+  }
+
+  try {
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${process.env.APP_URL}/subscription`,
+    });
+
+    return session;
+  } catch (error) {
+    console.error('Error creating customer portal session:', error);
+    throw error;
+  }
+}
+
+export interface SubscriptionStatus {
+  tier: SubscriptionTier;
+  status: 'active' | 'inactive' | 'cancelled' | 'past_due' | 'trialing';
+  currentPeriodEnd: Date | null;
+  cancelAtPeriodEnd: boolean;
+}
+
+export async function getSubscriptionStatus(
+  subscriptionId: string
+): Promise<SubscriptionStatus> {
+  if (!stripe) {
+    throw new Error('Stripe is not configured');
+  }
+
+  try {
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+
+    // Determine tier based on price
+    let tier: SubscriptionTier = 'free';
+    if (subscription.items.data.length > 0) {
+      const priceId = subscription.items.data[0].price.id;
+      if (priceId === process.env.STRIPE_PRO_PRICE_ID) {
+        tier = 'pro';
+      } else if (priceId === process.env.STRIPE_ENTERPRISE_PRICE_ID) {
+        tier = 'enterprise';
+      }
+    }
+
+    return {
+      tier,
+      status: subscription.status as SubscriptionStatus['status'],
+      currentPeriodEnd: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
+      cancelAtPeriodEnd: subscription.cancel_at_period_end || false,
+    };
+  } catch (error) {
+    console.error('Error getting subscription status:', error);
+    throw error;
+  }
+}
+
+export async function cancelSubscription(
+  subscriptionId: string,
+  immediately: boolean = false
+): Promise<Stripe.Subscription> {
+  if (!stripe) {
+    throw new Error('Stripe is not configured');
+  }
+
+  try {
+    if (immediately) {
+      // Cancel immediately
+      const subscription = await stripe.subscriptions.cancel(subscriptionId);
+      return subscription;
+    } else {
+      // Cancel at period end
+      const subscription = await stripe.subscriptions.update(subscriptionId, {
+        cancel_at_period_end: true,
+      });
+      return subscription;
+    }
+  } catch (error) {
+    console.error('Error cancelling subscription:', error);
+    throw error;
+  }
+}
+
 export async function createSubscription(customerId: string, planType: keyof typeof SUBSCRIPTION_PLANS) {
+  if (!stripe) {
+    throw new Error('Stripe is not configured');
+  }
+
   try {
     const plan = SUBSCRIPTION_PLANS[planType];
     

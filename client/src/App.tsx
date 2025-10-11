@@ -33,6 +33,10 @@ import SignInPage from "@/pages/handler/sign-in";
 import SignUpPage from "@/pages/handler/sign-up";
 import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage from "@/pages/reset-password";
+import Subscription from "@/pages/subscription";
+import SubscriptionSuccess from "@/pages/subscription-success";
+import SubscriptionCancel from "@/pages/subscription-cancel";
+import SubscriptionBilling from "@/pages/subscription-billing";
 import { AIAssistant } from "@/components/ai-assistant";
 import OnboardingTour from "@/components/onboarding-tour";
 import { SkipLink } from "@/components/skip-link";
@@ -84,6 +88,10 @@ function Router() {
           <Route path="/collections" component={Collections} />
           <Route path="/analytics" component={Analytics} />
           <Route path="/teams" component={Teams} />
+          <Route path="/subscription" component={Subscription} />
+          <Route path="/subscription/success" component={SubscriptionSuccess} />
+          <Route path="/subscription/cancel" component={SubscriptionCancel} />
+          <Route path="/subscription/billing" component={SubscriptionBilling} />
         </>
       )}
       

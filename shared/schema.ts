@@ -155,6 +155,20 @@ export const similarRepositories = pgTable("similar_repositories", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Subscription events (for webhook tracking)
+export const subscriptionEvents = pgTable("subscription_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  eventType: varchar("event_type").notNull(), // subscription_created, subscription_updated, subscription_deleted, payment_succeeded, payment_failed
+  stripeEventId: varchar("stripe_event_id").unique(),
+  data: jsonb("data"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_subscription_events_user").on(table.userId),
+  index("idx_subscription_events_type").on(table.eventType),
+  index("idx_subscription_events_stripe").on(table.stripeEventId),
+]);
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   savedRepositories: many(savedRepositories),
@@ -680,3 +694,5 @@ export type InsertAnalysis = z.infer<typeof insertAnalysisSchema>;
 export type SavedRepository = typeof savedRepositories.$inferSelect;
 export type InsertSavedRepository = z.infer<typeof insertSavedRepositorySchema>;
 export type SimilarRepository = typeof similarRepositories.$inferSelect;
+export type SubscriptionEvent = typeof subscriptionEvents.$inferSelect;
+export type InsertSubscriptionEvent = typeof subscriptionEvents.$inferInsert;

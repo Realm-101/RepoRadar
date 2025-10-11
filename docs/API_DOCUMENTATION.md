@@ -21,6 +21,13 @@ POST /api/analyze
 
 Analyzes a GitHub repository.
 
+**Authentication:** Required
+
+**Rate Limits:**
+- Free tier: 10 analyses per day
+- Pro tier: 100 analyses per day
+- Enterprise tier: Unlimited
+
 **Request Body:**
 ```json
 {
@@ -46,6 +53,77 @@ Analyzes a GitHub repository.
     "improvements": ["Add more examples"]
   },
   "analyzedAt": "2025-01-04T12:00:00Z"
+}
+```
+
+**Error Responses:**
+
+429 - Rate limit exceeded:
+```json
+{
+  "error": "Daily analysis limit exceeded",
+  "tier": "free",
+  "limit": 10,
+  "upgrade": "pro",
+  "message": "Upgrade to Pro for 100 analyses per day"
+}
+```
+
+#### Reanalyze Repository
+```
+POST /api/repositories/:id/reanalyze
+```
+
+Triggers a fresh analysis of a repository, clearing cached results.
+
+**Authentication:** Required
+
+**Rate Limits:**
+- 1 reanalysis per repository per hour (all tiers)
+
+**Path Parameters:**
+- `id` - Repository ID (UUID)
+
+**Response:**
+```json
+{
+  "analysis": {
+    "id": "uuid",
+    "repository": "facebook/react",
+    "score": 96,
+    "metrics": {
+      "code_quality": 99,
+      "documentation": 95,
+      "community": 93,
+      "maintenance": 97
+    },
+    "analyzedAt": "2025-01-04T13:00:00Z"
+  },
+  "repository": {
+    "id": "uuid",
+    "name": "react",
+    "owner": "facebook",
+    "lastAnalyzed": "2025-01-04T13:00:00Z",
+    "analysisCount": 3
+  }
+}
+```
+
+**Error Responses:**
+
+404 - Repository not found:
+```json
+{
+  "error": "Repository not found"
+}
+```
+
+429 - Reanalysis rate limit exceeded:
+```json
+{
+  "error": "Reanalysis rate limit exceeded",
+  "retryAfter": 45,
+  "message": "Please wait 45 minutes before reanalyzing this repository"
 }
 ```
 
@@ -155,6 +233,95 @@ Cancels a background job.
 
 ### Analytics
 
+#### Get Analytics Dashboard
+```
+GET /api/analytics/dashboard
+```
+
+Gets analytics dashboard data for the authenticated user.
+
+**Authentication:** Required
+
+**Response:**
+```json
+{
+  "stats": {
+    "totalAnalyses": 45,
+    "thisMonth": 12,
+    "growth": 15.5,
+    "avgScore": 87.3,
+    "topLanguage": "JavaScript",
+    "activeProjects": 8
+  },
+  "activity": [
+    { "date": "2025-01-01", "count": 3 },
+    { "date": "2025-01-02", "count": 5 }
+  ],
+  "languages": [
+    { "name": "JavaScript", "value": 45 },
+    { "name": "Python", "value": 30 }
+  ],
+  "scores": [
+    { "name": "Code Quality", "score": 88 },
+    { "name": "Documentation", "score": 85 }
+  ]
+}
+```
+
+#### Get Advanced Analytics
+```
+GET /api/analytics/advanced?timeRange=30d
+```
+
+Gets advanced analytics data (Pro and Enterprise tiers only).
+
+**Authentication:** Required
+
+**Subscription Required:** Pro or Enterprise
+
+**Query Parameters:**
+- `timeRange` - Time range: 7d, 30d, 90d, 1y (default: 30d)
+
+**Response:**
+```json
+{
+  "trends": [
+    {
+      "month": "2025-01",
+      "analyses": 45,
+      "avgScore": 87.3,
+      "topLanguages": ["JavaScript", "Python"]
+    }
+  ],
+  "performance": [
+    {
+      "metric": "Code Quality",
+      "current": 88,
+      "previous": 85,
+      "change": 3.5
+    }
+  ],
+  "insights": [
+    {
+      "type": "improvement",
+      "message": "Your code quality scores improved by 3.5% this month"
+    }
+  ]
+}
+```
+
+**Error Responses:**
+
+403 - Subscription required:
+```json
+{
+  "error": "Advanced analytics requires Pro or Enterprise subscription",
+  "tier": "free",
+  "upgrade": "pro",
+  "message": "Upgrade to Pro to access advanced analytics"
+}
+```
+
 #### Track Event
 ```
 POST /api/analytics/events
@@ -179,6 +346,148 @@ Tracks an analytics event.
 {
   "id": "event-uuid",
   "tracked": true
+}
+```
+
+### Subscription Management
+
+#### Get Subscription Status
+```
+GET /api/subscription/status
+```
+
+Gets the current user's subscription status.
+
+**Authentication:** Required
+
+**Response:**
+```json
+{
+  "tier": "pro",
+  "status": "active",
+  "currentPeriodEnd": "2025-02-04T12:00:00Z",
+  "cancelAtPeriodEnd": false,
+  "stripeCustomerId": "cus_...",
+  "stripeSubscriptionId": "sub_..."
+}
+```
+
+#### Create Checkout Session
+```
+POST /api/subscription/checkout
+```
+
+Creates a Stripe checkout session for upgrading subscription.
+
+**Authentication:** Required
+
+**Request Body:**
+```json
+{
+  "priceId": "price_pro_monthly"
+}
+```
+
+**Response:**
+```json
+{
+  "url": "https://checkout.stripe.com/pay/cs_test_..."
+}
+```
+
+**Error Responses:**
+
+400 - Invalid price ID:
+```json
+{
+  "error": "Invalid price ID"
+}
+```
+
+500 - Stripe error:
+```json
+{
+  "error": "Failed to create checkout session",
+  "message": "Stripe API error"
+}
+```
+
+#### Create Customer Portal Session
+```
+POST /api/subscription/portal
+```
+
+Creates a Stripe customer portal session for managing subscription.
+
+**Authentication:** Required
+
+**Response:**
+```json
+{
+  "url": "https://billing.stripe.com/session/..."
+}
+```
+
+**Error Responses:**
+
+400 - No active subscription:
+```json
+{
+  "error": "No active subscription found"
+}
+```
+
+#### Cancel Subscription
+```
+POST /api/subscription/cancel
+```
+
+Cancels the current subscription at the end of the billing period.
+
+**Authentication:** Required
+
+**Response:**
+```json
+{
+  "tier": "pro",
+  "status": "active",
+  "cancelAtPeriodEnd": true,
+  "currentPeriodEnd": "2025-02-04T12:00:00Z",
+  "message": "Subscription will be cancelled on 2025-02-04"
+}
+```
+
+**Error Responses:**
+
+400 - No active subscription:
+```json
+{
+  "error": "No active subscription to cancel"
+}
+```
+
+#### Get Billing History
+```
+GET /api/subscription/invoices
+```
+
+Gets the user's billing history.
+
+**Authentication:** Required
+
+**Response:**
+```json
+{
+  "invoices": [
+    {
+      "id": "in_...",
+      "amount": 1900,
+      "currency": "usd",
+      "status": "paid",
+      "created": "2025-01-04T12:00:00Z",
+      "invoicePdf": "https://pay.stripe.com/invoice/..."
+    }
+  ]
 }
 ```
 
@@ -387,12 +696,67 @@ All endpoints return consistent error responses:
 - `INTERNAL_ERROR` (500) - Server error
 - `SERVICE_UNAVAILABLE` (503) - Service temporarily unavailable
 
+## Subscription Tiers
+
+RepoRadar offers three subscription tiers with different limits and features:
+
+### Free Tier
+
+**Limits:**
+- 10 repository analyses per day
+- 100 API calls per hour
+- Basic analytics only
+
+**Features:**
+- Repository analysis
+- Search functionality
+- Basic analytics dashboard
+- Bookmarks
+
+### Pro Tier ($19/month)
+
+**Limits:**
+- 100 repository analyses per day
+- 1,000 API calls per hour
+
+**Features:**
+- All Free tier features
+- Advanced analytics
+- PDF/CSV export
+- Priority support
+- Reanalysis functionality
+
+### Enterprise Tier ($99/month)
+
+**Limits:**
+- Unlimited repository analyses
+- Unlimited API calls
+
+**Features:**
+- All Pro tier features
+- Custom integrations
+- API access
+- Dedicated support
+- SLA guarantees
+- Custom webhooks
+
 ## Rate Limiting
 
-API endpoints are rate limited:
+API endpoints are rate limited based on subscription tier:
 
-- Authenticated users: 1000 requests/hour
-- Unauthenticated users: 60 requests/hour
+**API Call Limits:**
+- Free tier: 100 requests/hour
+- Pro tier: 1,000 requests/hour
+- Enterprise tier: Unlimited
+- Unauthenticated: 60 requests/hour
+
+**Analysis Limits:**
+- Free tier: 10 analyses/day
+- Pro tier: 100 analyses/day
+- Enterprise tier: Unlimited
+
+**Reanalysis Limits:**
+- All tiers: 1 reanalysis per repository per hour
 
 Rate limit headers are included in responses:
 
@@ -400,6 +764,38 @@ Rate limit headers are included in responses:
 X-RateLimit-Limit: 1000
 X-RateLimit-Remaining: 999
 X-RateLimit-Reset: 1704369600
+X-RateLimit-Tier: pro
+```
+
+**Rate Limit Exceeded Response:**
+
+When rate limits are exceeded, the API returns a 429 status code:
+
+```json
+{
+  "error": "Rate limit exceeded",
+  "tier": "free",
+  "limit": 100,
+  "window": "hour",
+  "retryAfter": 3600,
+  "upgrade": "pro",
+  "message": "Upgrade to Pro for 1,000 API calls per hour"
+}
+```
+
+**Tier Enforcement:**
+
+Premium features return 403 when accessed without proper subscription:
+
+```json
+{
+  "error": "Subscription required",
+  "feature": "advanced_analytics",
+  "requiredTier": "pro",
+  "currentTier": "free",
+  "message": "This feature requires a Pro or Enterprise subscription",
+  "upgradeUrl": "/subscription"
+}
 ```
 
 ## Pagination
@@ -561,6 +957,16 @@ expect(result.score).toBe(95);
 
 ## Changelog
 
+### v3.1.0 (2025-01-10)
+
+- Added subscription management endpoints
+- Added repository reanalysis endpoint
+- Added advanced analytics endpoint
+- Implemented tier-based rate limiting
+- Added subscription tier enforcement
+- Enhanced error responses with upgrade prompts
+- Added billing history endpoint
+
 ### v3.0.0 (2025-01-04)
 
 - Added background job processing endpoints
@@ -573,5 +979,5 @@ expect(result.score).toBe(95);
 
 ---
 
-**Last Updated:** January 4, 2025
-**API Version:** 3.0.0
+**Last Updated:** January 10, 2025
+**API Version:** 3.1.0

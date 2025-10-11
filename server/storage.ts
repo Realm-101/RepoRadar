@@ -4,6 +4,7 @@ import {
   repositoryAnalyses,
   savedRepositories,
   similarRepositories,
+  subscriptionEvents,
   bookmarks,
   tags,
   repositoryTags,
@@ -98,6 +99,15 @@ export interface IStorage {
   linkOAuthProvider(userId: string, provider: 'google' | 'github', providerId: string): Promise<User>;
   updateUserLastLogin(userId: string, ip: string): Promise<User>;
   invalidateUserSessions(userId: string): Promise<User>;
+  
+  // Subscription events
+  createSubscriptionEvent(event: {
+    userId: string;
+    eventType: string;
+    stripeEventId: string;
+    data: any;
+  }): Promise<void>;
+  getSubscriptionEvent(stripeEventId: string): Promise<any | undefined>;
 
   // Repository operations
   getRepository(id: string): Promise<Repository | undefined>;
@@ -407,6 +417,29 @@ export class DatabaseStorage implements IStorage {
       .returning();
     
     return user;
+  }
+
+  // Subscription event operations
+  async createSubscriptionEvent(event: {
+    userId: string;
+    eventType: string;
+    stripeEventId: string;
+    data: any;
+  }): Promise<void> {
+    await db.insert(subscriptionEvents).values({
+      userId: event.userId,
+      eventType: event.eventType,
+      stripeEventId: event.stripeEventId,
+      data: event.data,
+    });
+  }
+
+  async getSubscriptionEvent(stripeEventId: string): Promise<any | undefined> {
+    const [event] = await db
+      .select()
+      .from(subscriptionEvents)
+      .where(eq(subscriptionEvents.stripeEventId, stripeEventId));
+    return event;
   }
 
   // Repository operations
