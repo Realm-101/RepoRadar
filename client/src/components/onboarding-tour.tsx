@@ -54,10 +54,15 @@ interface OnboardingTourProps {
 
 export default function OnboardingTour({ onComplete }: OnboardingTourProps) {
   const [runTour, setRunTour] = useState(false);
-  const [, setLocation] = useLocation();
+  const [location] = useLocation();
   const { toast } = useToast();
 
   useEffect(() => {
+    // Only run tour on home page after authentication
+    if (location !== '/home') {
+      return;
+    }
+
     // Check if tour has been completed before
     const tourCompleted = localStorage.getItem('completedTour');
     const skipTour = localStorage.getItem('skipTour');
@@ -66,9 +71,9 @@ export default function OnboardingTour({ onComplete }: OnboardingTourProps) {
       // Small delay to ensure page is fully loaded
       setTimeout(() => {
         setRunTour(true);
-      }, 1000);
+      }, 1500);
     }
-  }, []);
+  }, [location]);
 
   const handleJoyrideCallback = (data: CallBackProps) => {
     const { status, type } = data;

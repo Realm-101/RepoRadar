@@ -23,7 +23,7 @@ export default function Landing() {
     <div className="min-h-screen bg-dark text-white">
       <Header />
       {/* Hero Section */}
-      <section className="relative py-32 bg-gradient-to-b from-dark via-card to-dark overflow-hidden">
+      <section className="relative pt-48 pb-32 bg-gradient-to-b from-dark via-card to-dark overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-secondary/10 to-accent/10 animate-glow"></div>
         <div className="relative max-w-6xl mx-auto px-6 text-center">
           <div className="flex items-center justify-center space-x-3 mb-8">
@@ -69,8 +69,12 @@ export default function Landing() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
             <Card className="bg-card/50 border-border backdrop-blur-sm">
               <CardContent className="p-6 text-center">
-                <div className="w-12 h-12 rounded-lg bg-gradient-to-r from-primary to-secondary flex items-center justify-center mx-auto mb-4">
-                  <i className="fas fa-brain text-white"></i>
+                <div className="w-12 h-12 rounded-lg flex items-center justify-center mx-auto mb-4">
+                  <img 
+                    src="/Images/Gemini2.png" 
+                    alt="AI-Powered Analysis" 
+                    className="w-full h-full object-contain"
+                  />
                 </div>
                 <h3 className="text-xl font-semibold mb-2">AI-Powered Analysis</h3>
                 <p className="text-gray-400">Gemini 2.5 Pro evaluates repositories across 5 key metrics</p>
@@ -79,8 +83,12 @@ export default function Landing() {
 
             <Card className="bg-card/50 border-border backdrop-blur-sm">
               <CardContent className="p-6 text-center">
-                <div className="w-12 h-12 rounded-lg bg-gradient-to-r from-accent to-primary flex items-center justify-center mx-auto mb-4">
-                  <i className="fas fa-chart-line text-white"></i>
+                <div className="w-12 h-12 rounded-lg flex items-center justify-center mx-auto mb-4">
+                  <img 
+                    src="/Images/metrics2.png" 
+                    alt="Comprehensive Metrics" 
+                    className="w-full h-full object-contain"
+                  />
                 </div>
                 <h3 className="text-xl font-semibold mb-2">Comprehensive Metrics</h3>
                 <p className="text-gray-400">Analyze originality, completeness, marketability, and more</p>
@@ -89,8 +97,12 @@ export default function Landing() {
 
             <Card className="bg-card/50 border-border backdrop-blur-sm">
               <CardContent className="p-6 text-center">
-                <div className="w-12 h-12 rounded-lg bg-gradient-to-r from-secondary to-accent flex items-center justify-center mx-auto mb-4">
-                  <i className="fas fa-balance-scale text-white"></i>
+                <div className="w-12 h-12 rounded-lg flex items-center justify-center mx-auto mb-4">
+                  <img 
+                    src="/Images/compare2.png" 
+                    alt="Smart Comparison" 
+                    className="w-full h-full object-contain"
+                  />
                 </div>
                 <h3 className="text-xl font-semibold mb-2">Smart Comparison</h3>
                 <p className="text-gray-400">Compare repositories side-by-side with detailed breakdowns</p>
@@ -113,8 +125,12 @@ export default function Landing() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div className="space-y-8">
               <div className="flex items-start space-x-4">
-                <div className="w-12 h-12 rounded-lg bg-gradient-to-r from-primary to-secondary flex items-center justify-center flex-shrink-0">
-                  <i className="fas fa-search text-white"></i>
+                <div className="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <img 
+                    src="/Images/GreenOctoCat.png" 
+                    alt="Repository Discovery" 
+                    className="w-full h-full object-contain"
+                  />
                 </div>
                 <div>
                   <h3 className="text-2xl font-semibold mb-2">Repository Discovery</h3>
@@ -125,8 +141,12 @@ export default function Landing() {
               </div>
 
               <div className="flex items-start space-x-4">
-                <div className="w-12 h-12 rounded-lg bg-gradient-to-r from-accent to-primary flex items-center justify-center flex-shrink-0">
-                  <i className="fas fa-robot text-white"></i>
+                <div className="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <img 
+                    src="/Images/Gemini2.png" 
+                    alt="AI Evaluation" 
+                    className="w-full h-full object-contain"
+                  />
                 </div>
                 <div>
                   <h3 className="text-2xl font-semibold mb-2">AI Evaluation</h3>
@@ -137,8 +157,12 @@ export default function Landing() {
               </div>
 
               <div className="flex items-start space-x-4">
-                <div className="w-12 h-12 rounded-lg bg-gradient-to-r from-secondary to-accent flex items-center justify-center flex-shrink-0">
-                  <i className="fas fa-bookmark text-white"></i>
+                <div className="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <img 
+                    src="/Images/save2.png" 
+                    alt="Save & Organize" 
+                    className="w-full h-full object-contain"
+                  />
                 </div>
                 <div>
                   <h3 className="text-2xl font-semibold mb-2">Save & Organize</h3>
@@ -216,8 +240,12 @@ export default function Landing() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div>
               <div className="flex items-center space-x-3 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-r from-primary to-secondary flex items-center justify-center">
-                  <i className="fas fa-code text-white text-sm"></i>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center">
+                  <img 
+                    src="/Images/Gitradartrans.png" 
+                    alt="RepoRadar" 
+                    className="w-full h-full object-contain"
+                  />
                 </div>
                 <h3 className="text-xl font-bold gradient-text">RepoAnalyzer</h3>
               </div>

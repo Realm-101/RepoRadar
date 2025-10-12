@@ -86,64 +86,61 @@ export function AIAssistant() {
     <>
       {/* Floating Action Button */}
       <div className="fixed bottom-6 right-6 z-50">
-        {!isOpen && (
-          <button
-            onClick={() => setIsOpen(true)}
-            className="group relative w-16 h-16 rounded-full bg-gradient-to-r from-primary to-secondary p-[2px] shadow-2xl hover:shadow-primary/50 transition-all duration-300 hover:scale-110"
-            data-testid="button-ai-assistant"
-            data-tour="ai-assistant"
-          >
-            <div className="w-full h-full rounded-full bg-dark flex items-center justify-center">
-              <div className="relative">
-                <i className="fas fa-robot text-2xl text-white"></i>
-                <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-              </div>
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="group relative w-16 h-16 rounded-full bg-gradient-to-r from-primary to-secondary p-[2px] shadow-2xl hover:shadow-primary/50 transition-all duration-300 hover:scale-110"
+          data-testid="button-ai-assistant"
+          data-tour="ai-assistant"
+        >
+          <div className="w-full h-full rounded-full bg-background flex items-center justify-center">
+            <div className="relative">
+              <img 
+                src="/Images/Gemini2.png" 
+                alt="AI Assistant" 
+                className="w-8 h-8 object-contain"
+              />
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
             </div>
-            <div className="absolute -top-12 right-0 bg-gray-900 text-white text-sm px-3 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-              AI Assistant
-            </div>
-          </button>
-        )}
+          </div>
+          <div className="absolute -top-12 right-0 bg-card text-foreground text-sm px-3 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-border">
+            AI Assistant
+          </div>
+        </button>
       </div>
 
-      {/* Holographic AI Assistant Panel */}
+      {/* AI Assistant Panel */}
       {isOpen && (
-        <div className="fixed bottom-6 right-6 z-50 w-96 h-[600px]">
+        <div className="fixed bottom-24 right-6 z-50 w-96 h-[600px]">
           <div className="relative w-full h-full">
-            {/* Holographic Background Effect */}
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 rounded-2xl animate-pulse"></div>
-            <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/10 via-transparent to-yellow-500/10 rounded-2xl animate-pulse animation-delay-1000"></div>
+            {/* Subtle Background Effect */}
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-secondary/5 to-accent/5 rounded-2xl"></div>
             
-            {/* Holographic Border */}
-            <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 p-[1px] animate-gradient">
-              <div className="w-full h-full rounded-2xl bg-gray-900/95 backdrop-blur-xl">
-                {/* Holographic Particles */}
-                <div className="absolute inset-0 overflow-hidden rounded-2xl">
-                  <div className="particle particle-1"></div>
-                  <div className="particle particle-2"></div>
-                  <div className="particle particle-3"></div>
-                  <div className="particle particle-4"></div>
-                </div>
-
+            {/* Border */}
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-primary via-secondary to-accent p-[1px]">
+              <div className="w-full h-full rounded-2xl bg-card/95 backdrop-blur-xl">
                 {/* Header */}
-                <div className="relative flex items-center justify-between p-4 border-b border-gray-800/50">
+                <div className="relative flex items-center justify-between p-4 border-b border-border">
                   <div className="flex items-center space-x-3">
                     <div className="relative">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center animate-pulse">
-                        <i className="fas fa-robot text-white"></i>
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center">
+                        <img 
+                          src="/Images/Gemini2.png" 
+                          alt="AI Assistant" 
+                          className="w-10 h-10 object-contain"
+                        />
                       </div>
                       <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full"></div>
                     </div>
                     <div>
-                      <h3 className="font-semibold text-white">AI Assistant</h3>
-                      <p className="text-xs text-gray-400">Powered by Gemini 2.5</p>
+                      <h3 className="font-semibold text-foreground">AI Assistant</h3>
+                      <p className="text-xs text-muted-foreground">Powered by Gemini 2.5</p>
                     </div>
                   </div>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => setIsOpen(false)}
-                    className="text-gray-400 hover:text-white"
+                    className="text-muted-foreground hover:text-foreground"
                   >
                     <i className="fas fa-times"></i>
                   </Button>
@@ -161,13 +158,13 @@ export function AIAssistant() {
                           <div
                             className={`p-3 rounded-lg ${
                               message.role === 'user'
-                                ? 'bg-gradient-to-r from-primary/20 to-secondary/20 border border-primary/30 text-white'
-                                : 'bg-gray-800/50 border border-gray-700/50 text-gray-200'
+                                ? 'bg-gradient-to-r from-primary/20 to-secondary/20 border border-primary/30 text-foreground'
+                                : 'bg-muted/50 border border-border text-foreground'
                             } backdrop-blur-sm`}
                           >
                             {message.content}
                           </div>
-                          <p className={`text-xs text-gray-500 mt-1 ${message.role === 'user' ? 'text-right' : ''}`}>
+                          <p className={`text-xs text-muted-foreground mt-1 ${message.role === 'user' ? 'text-right' : ''}`}>
                             {message.timestamp.toLocaleTimeString()}
                           </p>
                         </div>
@@ -175,11 +172,11 @@ export function AIAssistant() {
                     ))}
                     {isTyping && (
                       <div className="flex justify-start">
-                        <div className="bg-gray-800/50 border border-gray-700/50 p-3 rounded-lg">
+                        <div className="bg-muted/50 border border-border p-3 rounded-lg">
                           <div className="flex space-x-2">
-                            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
-                            <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce animation-delay-200"></div>
-                            <div className="w-2 h-2 bg-pink-500 rounded-full animate-bounce animation-delay-400"></div>
+                            <div className="w-2 h-2 bg-primary rounded-full animate-bounce"></div>
+                            <div className="w-2 h-2 bg-secondary rounded-full animate-bounce animation-delay-200"></div>
+                            <div className="w-2 h-2 bg-accent rounded-full animate-bounce animation-delay-400"></div>
                           </div>
                         </div>
                       </div>
@@ -188,7 +185,7 @@ export function AIAssistant() {
                 </ScrollArea>
 
                 {/* Input */}
-                <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-800/50 bg-gray-900/80 backdrop-blur-sm rounded-b-2xl">
+                <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-border bg-card/80 backdrop-blur-sm rounded-b-2xl">
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
@@ -200,7 +197,7 @@ export function AIAssistant() {
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       placeholder="Ask me anything..."
-                      className="flex-1 bg-gray-800/50 border-gray-700 text-white placeholder-gray-500"
+                      className="flex-1 bg-background border-border text-foreground placeholder-muted-foreground"
                       disabled={isTyping}
                       data-testid="input-ai-question"
                     />
@@ -221,71 +218,12 @@ export function AIAssistant() {
       )}
 
       <style>{`
-        @keyframes gradient {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.7; }
-        }
-
-        .animate-gradient {
-          animation: gradient 3s ease-in-out infinite;
-        }
-
         .animation-delay-200 {
           animation-delay: 200ms;
         }
 
         .animation-delay-400 {
           animation-delay: 400ms;
-        }
-
-        .animation-delay-1000 {
-          animation-delay: 1000ms;
-        }
-
-        .particle {
-          position: absolute;
-          width: 2px;
-          height: 2px;
-          background: linear-gradient(to bottom, transparent, #60a5fa, transparent);
-          opacity: 0;
-          animation: particleFloat 10s infinite;
-        }
-
-        .particle-1 {
-          left: 10%;
-          animation-delay: 0s;
-        }
-
-        .particle-2 {
-          left: 30%;
-          animation-delay: 2.5s;
-        }
-
-        .particle-3 {
-          left: 60%;
-          animation-delay: 5s;
-        }
-
-        .particle-4 {
-          left: 80%;
-          animation-delay: 7.5s;
-        }
-
-        @keyframes particleFloat {
-          0% {
-            bottom: -10px;
-            opacity: 0;
-          }
-          10% {
-            opacity: 1;
-          }
-          90% {
-            opacity: 1;
-          }
-          100% {
-            bottom: 100%;
-            opacity: 0;
-          }
         }
       `}</style>
     </>

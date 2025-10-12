@@ -1,29 +1,25 @@
----
-title: "Installation & Setup"
-description: "Set up RepoRadar for development"
-category: "getting-started"
-order: 3
-lastUpdated: "2025-01-10"
-tags: ["development", "setup"]
----
-
-# Installation & Setup
-
-This guide is for developers who want to run RepoRadar locally or contribute to the project.
+# Installation Guide
 
 ## Prerequisites
 
-- Node.js 18 or higher
-- PostgreSQL database (or Neon account)
-- GitHub account
-- Google Gemini API key
+Before installing RepoRadar, ensure you have:
 
-## Installation Steps
+- **Node.js** 18 or higher
+- **npm** or **yarn** package manager
+- **PostgreSQL** database (we recommend [Neon](https://neon.tech) for serverless PostgreSQL)
+- **Google Gemini API key** (get one at [Google AI Studio](https://makersuite.google.com/app/apikey))
+
+### Optional Services
+- **Redis** for caching (optional, falls back to memory cache)
+- **Stripe** account for payment processing (optional)
+- **GitHub Personal Access Token** for higher API rate limits (optional)
+
+## Quick Installation
 
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-org/reporadar.git
+git clone <your-repo-url>
 cd reporadar
 ```
 
@@ -41,16 +37,28 @@ Copy the example environment file:
 cp .env.example .env
 ```
 
-Edit `.env` and add your credentials:
+Edit `.env` and configure the required variables:
 
 ```env
-DATABASE_URL=your_postgresql_connection_string
-GEMINI_API_KEY=your_gemini_api_key
-GITHUB_TOKEN=your_github_token
-SESSION_SECRET=your_random_secret
+# Required
+DATABASE_URL=postgresql://user:password@host:5432/database
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Optional but recommended
+GITHUB_TOKEN=your_github_token_here
+REDIS_URL=redis://localhost:6379
+
+# Optional for payments
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_PUBLISHABLE_KEY=pk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# Environment
+NODE_ENV=development
+PORT=5000
 ```
 
-### 4. Set Up Database
+### 4. Set Up the Database
 
 Push the database schema:
 
@@ -58,7 +66,7 @@ Push the database schema:
 npm run db:push
 ```
 
-### 5. Start Development Server
+### 5. Start the Development Server
 
 ```bash
 npm run dev
@@ -66,40 +74,80 @@ npm run dev
 
 The application will be available at `http://localhost:5000`
 
-## Development Commands
+## Production Deployment
+
+### Build for Production
 
 ```bash
-npm run dev              # Start development server
-npm run build            # Build for production
-npm run test             # Run tests
-npm run lint             # Check code quality
-npm run db:push          # Update database schema
+npm run build
 ```
+
+### Start Production Server
+
+```bash
+npm run start
+```
+
+### Docker Deployment
+
+Build and run with Docker:
+
+```bash
+npm run deploy:docker
+```
+
+For multi-instance deployment with load balancing:
+
+```bash
+docker-compose up -d
+```
+
+See [Multi-Instance Deployment Guide](../MULTI_INSTANCE_DEPLOYMENT.md) for details.
+
+## Verification
+
+After installation, verify everything is working:
+
+1. **Health Check**: Visit `http://localhost:5000/health`
+2. **Configuration**: Run `npm run config:validate`
+3. **Database**: Check connection with `npm run health:check`
 
 ## Troubleshooting
 
 ### Database Connection Issues
 
-Ensure your `DATABASE_URL` is correct and the database is accessible.
+If you see database connection errors:
+
+1. Verify `DATABASE_URL` is correct
+2. Ensure PostgreSQL is running
+3. Check firewall settings
+4. For Neon, verify your IP is allowed
+
+### Gemini API Issues
+
+If AI features aren't working:
+
+1. Verify `GEMINI_API_KEY` is set correctly
+2. Check API quota at [Google AI Studio](https://makersuite.google.com)
+3. Ensure you're using Gemini 2.5 Pro model
 
 ### Port Already in Use
 
-Change the port in your `.env` file:
+If port 5000 is already in use:
 
-```env
+```bash
+# Change PORT in .env
 PORT=3000
-```
-
-### API Rate Limits
-
-Add a GitHub personal access token to increase rate limits:
-
-```env
-GITHUB_TOKEN=your_token_here
 ```
 
 ## Next Steps
 
-- Read the [API Documentation](../api-reference/index.md)
-- Explore the [Features](../features/index.md)
-- Check [Contributing Guidelines](../../README.md)
+- [Quick Start Guide](./quick-start.md) - Learn the basics
+- [Configuration Guide](../PERFORMANCE_CONFIGURATION.md) - Optimize performance
+- [API Documentation](../API_DOCUMENTATION.md) - Integrate with your apps
+
+## Getting Help
+
+- Check [FAQ](../faq/index.md) for common questions
+- See [Troubleshooting Guide](../troubleshooting/index.md) for solutions
+- Review [Documentation](../README.md) for detailed guides

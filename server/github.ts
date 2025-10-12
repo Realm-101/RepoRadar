@@ -258,6 +258,196 @@ class GitHubService {
 
     return null;
   }
+
+  async getFileContent(owner: string, repo: string, path: string, ref?: string): Promise<string | null> {
+    try {
+      const url = ref 
+        ? `${this.baseUrl}/repos/${owner}/${repo}/contents/${path}?ref=${ref}`
+        : `${this.baseUrl}/repos/${owner}/${repo}/contents/${path}`;
+      
+      const response = await fetch(url, {
+        headers: {
+          'Accept': 'application/vnd.github.v3.raw'
+        }
+      });
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          return null;
+        }
+        await this.handleGitHubError(response, 'file content fetch');
+      }
+      
+      return await response.text();
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      this.handleNetworkError(error, 'file content fetch');
+    }
+  }
+
+  async createPullRequest(
+    owner: string,
+    repo: string,
+    title: string,
+    body: string,
+    head: string,
+    base: string = 'main',
+    token?: string
+  ): Promise<{ number: number; html_url: string } | null> {
+    try {
+      const headers: Record<string, string> = {
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      const response = await fetch(`${this.baseUrl}/repos/${owner}/${repo}/pulls`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          title,
+          body,
+          head,
+          base
+        })
+      });
+      
+      if (!response.ok) {
+        await this.handleGitHubError(response, 'pull request creation');
+      }
+      
+      const data = await response.json();
+      return {
+        number: data.number,
+        html_url: data.html_url
+      };
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      this.handleNetworkError(error, 'pull request creation');
+    }
+  }
+
+  async createBranch(
+    owner: string,
+    repo: string,
+    branchName: string,
+    fromBranch: string = 'main',
+    token?: string
+  ): Promise<boolean> {
+    try {
+      const headers: Record<string, string> = {
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      // Get the SHA of the base branch
+      const refResponse = await fetch(
+        `${this.baseUrl}/repos/${owner}/${repo}/git/refs/heads/${fromBranch}`,
+        { headers }
+      );
+      
+      if (!refResponse.ok) {
+        await this.handleGitHubError(refResponse, 'branch reference fetch');
+      }
+      
+      const refData = await refResponse.json();
+      const sha = refData.object.sha;
+      
+      // Create new branch
+      const createResponse = await fetch(
+        `${this.baseUrl}/repos/${owner}/${repo}/git/refs`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            ref: `refs/heads/${branchName}`,
+            sha
+          })
+        }
+      );
+      
+      if (!createResponse.ok) {
+        await this.handleGitHubError(createResponse, 'branch creation');
+      }
+      
+      return true;
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      this.handleNetworkError(error, 'branch creation');
+    }
+  }
+
+  async updateFile(
+    owner: string,
+    repo: string,
+    path: string,
+    content: string,
+    message: string,
+    branch: string,
+    token?: string
+  ): Promise<boolean> {
+    try {
+      const headers: Record<string, string> = {
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      // Get current file to get its SHA
+      const fileResponse = await fetch(
+        `${this.baseUrl}/repos/${owner}/${repo}/contents/${path}?ref=${branch}`,
+        { headers }
+      );
+      
+      let sha: string | undefined;
+      if (fileResponse.ok) {
+        const fileData = await fileResponse.json();
+        sha = fileData.sha;
+      }
+      
+      // Update or create file
+      const updateResponse = await fetch(
+        `${this.baseUrl}/repos/${owner}/${repo}/contents/${path}`,
+        {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({
+            message,
+            content: Buffer.from(content).toString('base64'),
+            branch,
+            ...(sha && { sha })
+          })
+        }
+      );
+      
+      if (!updateResponse.ok) {
+        await this.handleGitHubError(updateResponse, 'file update');
+      }
+      
+      return true;
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      this.handleNetworkError(error, 'file update');
+    }
+  }
 }
 
 export const githubService = new GitHubService();

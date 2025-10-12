@@ -19,7 +19,7 @@ export function PageWithBackground({ children, className = "" }: PageWithBackgro
         />
       </div>
       
-      <div className="relative z-10">
+      <div className="relative z-10 pt-24">
         {children}
       </div>
     </div>

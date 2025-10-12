@@ -170,8 +170,12 @@ export default function EnhancedSearch() {
           {/* Enhanced Search Repositories */}
           <Card className="bg-card border border-border hover:border-primary/30 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10">
             <CardContent className="p-8">
-              <div className="w-12 h-12 rounded-lg bg-gradient-to-r from-primary to-secondary flex items-center justify-center mx-auto mb-6">
-                <Search className="w-6 h-6 text-white" />
+              <div className="w-12 h-12 rounded-lg flex items-center justify-center mx-auto mb-6">
+                <img 
+                  src="/Images/search.png" 
+                  alt="Search Repositories" 
+                  className="w-12 h-12 object-contain"
+                />
               </div>
               <h3 className="text-2xl font-semibold mb-4">Search Repositories</h3>
               <p className="text-gray-400 mb-6">
@@ -191,6 +195,7 @@ export default function EnhancedSearch() {
                       onKeyDown={handleKeyDown}
                       className="bg-dark border-border text-white focus:border-primary/50 transition-colors pr-10"
                       data-testid="input-search"
+                      data-tour="search-box"
                     />
                     <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500">
                       <kbd className="px-2 py-1 text-xs bg-gray-800 rounded">⌘K</kbd>
@@ -243,8 +248,12 @@ export default function EnhancedSearch() {
           {/* Enhanced Analyze Repository */}
           <Card className="bg-card border border-border hover:border-accent/30 transition-all duration-300 hover:shadow-lg hover:shadow-accent/10">
             <CardContent className="p-8">
-              <div className="w-12 h-12 rounded-lg bg-gradient-to-r from-accent to-primary flex items-center justify-center mx-auto mb-6">
-                <i className="fas fa-robot text-white"></i>
+              <div className="w-12 h-12 rounded-lg flex items-center justify-center mx-auto mb-6">
+                <img 
+                  src="/Images/analyze.png" 
+                  alt="Analyze Repository" 
+                  className="w-12 h-12 object-contain"
+                />
               </div>
               <h3 className="text-2xl font-semibold mb-4">Analyze Repository</h3>
               <p className="text-gray-400 mb-6">
@@ -265,6 +274,7 @@ export default function EnhancedSearch() {
                   disabled={isAnalyzing}
                   className="bg-accent hover:bg-accent/80 text-white transition-all duration-200 hover:scale-105"
                   data-testid="button-analyze"
+                  data-tour="analyze-button"
                 >
                   {isAnalyzing ? (
                     <Loader2 className="w-4 h-4 animate-spin" />

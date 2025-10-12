@@ -14,7 +14,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { 
   Code, FileCode, GitBranch, AlertTriangle, CheckCircle, 
   XCircle, Info, Lightbulb, Shield, Zap, Clock, 
-  TrendingUp, Bug, Lock, Sparkles, FileText, Search
+  TrendingUp, Bug, Lock, Sparkles, FileText, Search, ExternalLink, Loader2
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -23,6 +23,13 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface CodeIssue {
   type: 'error' | 'warning' | 'suggestion' | 'security';
@@ -59,6 +66,14 @@ export default function CodeReview() {
   const [codeSnippet, setCodeSnippet] = useState("");
   const [reviewResult, setReviewResult] = useState<ReviewResult | null>(null);
   const [activeTab, setActiveTab] = useState("repository");
+  const [viewCodeDialog, setViewCodeDialog] = useState<{
+    open: boolean;
+    content?: string;
+    filePath?: string;
+    line?: number;
+    fileUrl?: string;
+  }>({ open: false });
+  const [githubToken, setGithubToken] = useState("");
 
   const reviewMutation = useMutation({
     mutationFn: async (data: { type: string; content: string }) => {
@@ -153,12 +168,143 @@ export default function CodeReview() {
     },
   });
 
+  const viewCodeMutation = useMutation({
+    mutationFn: async (data: { repoUrl: string; filePath: string; line?: number }) => {
+      const response = await fetch('/api/code-review/view-code', {
+        method: 'POST',
+        body: JSON.stringify(data),
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch code');
+      }
+      
+      return await response.json();
+    },
+    onSuccess: (data: any) => {
+      setViewCodeDialog({
+        open: true,
+        content: data.content,
+        filePath: data.filePath,
+        line: data.line,
+        fileUrl: data.fileUrl
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to load code",
+        description: "Unable to fetch file content from GitHub",
+        variant: "destructive"
+      });
+    }
+  });
+
+  const createFixMutation = useMutation({
+    mutationFn: async (data: {
+      repoUrl: string;
+      filePath: string;
+      line?: number;
+      issue: string;
+      suggestion?: string;
+      githubToken: string;
+    }) => {
+      const response = await fetch('/api/code-review/create-fix', {
+        method: 'POST',
+        body: JSON.stringify(data),
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw error;
+      }
+      
+      return await response.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Pull request created!",
+        description: (
+          <div className="flex flex-col gap-2">
+            <p>AI-generated fix has been submitted as PR #{data.pullRequest.number}</p>
+            <a 
+              href={data.pullRequest.url} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-blue-500 hover:underline flex items-center gap-1"
+            >
+              View on GitHub <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+        )
+      });
+    },
+    onError: (error: any) => {
+      const message = error?.requiresAuth 
+        ? "Please provide a GitHub token to create pull requests"
+        : "Failed to create pull request";
+      
+      toast({
+        title: "Error",
+        description: message,
+        variant: "destructive"
+      });
+    }
+  });
+
   const startReview = () => {
     if (activeTab === "repository" && repoUrl) {
       reviewMutation.mutate({ type: "repository", content: repoUrl });
     } else if (activeTab === "snippet" && codeSnippet) {
       reviewMutation.mutate({ type: "snippet", content: codeSnippet });
     }
+  };
+
+  const handleViewCode = (issue: CodeIssue) => {
+    if (!repoUrl) {
+      toast({
+        title: "Repository URL required",
+        description: "Please analyze a repository first",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    viewCodeMutation.mutate({
+      repoUrl,
+      filePath: issue.file,
+      line: issue.line
+    });
+  };
+
+  const handleCreateFix = (issue: CodeIssue) => {
+    if (!repoUrl) {
+      toast({
+        title: "Repository URL required",
+        description: "Please analyze a repository first",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!githubToken) {
+      toast({
+        title: "GitHub token required",
+        description: "Please provide a GitHub personal access token to create pull requests",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    createFixMutation.mutate({
+      repoUrl,
+      filePath: issue.file,
+      line: issue.line,
+      issue: issue.message,
+      suggestion: issue.suggestion,
+      githubToken
+    });
   };
 
   const getSeverityColor = (severity: string) => {
@@ -218,6 +364,27 @@ export default function CodeReview() {
                       value={repoUrl}
                       onChange={(e) => setRepoUrl(e.target.value)}
                     />
+                  </div>
+                  <div>
+                    <Label htmlFor="github-token">GitHub Token (Optional)</Label>
+                    <Input
+                      id="github-token"
+                      type="password"
+                      placeholder="ghp_xxxxxxxxxxxx"
+                      value={githubToken}
+                      onChange={(e) => setGithubToken(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Required for creating pull requests. Get one from{" "}
+                      <a 
+                        href="https://github.com/settings/tokens" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-blue-500 hover:underline"
+                      >
+                        GitHub Settings
+                      </a>
+                    </p>
                   </div>
                   <Alert>
                     <Info className="h-4 w-4" />
@@ -376,12 +543,30 @@ export default function CodeReview() {
                                   </div>
                                 )}
                                 <div className="flex gap-2">
-                                  <Button size="sm" variant="outline">
-                                    <FileCode className="h-4 w-4 mr-2" />
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline"
+                                    onClick={() => handleViewCode(issue)}
+                                    disabled={viewCodeMutation.isPending}
+                                  >
+                                    {viewCodeMutation.isPending ? (
+                                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    ) : (
+                                      <FileCode className="h-4 w-4 mr-2" />
+                                    )}
                                     View Code
                                   </Button>
-                                  <Button size="sm" variant="outline">
-                                    <GitBranch className="h-4 w-4 mr-2" />
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline"
+                                    onClick={() => handleCreateFix(issue)}
+                                    disabled={createFixMutation.isPending || !githubToken}
+                                  >
+                                    {createFixMutation.isPending ? (
+                                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    ) : (
+                                      <GitBranch className="h-4 w-4 mr-2" />
+                                    )}
                                     Create Fix
                                   </Button>
                                 </div>
@@ -495,6 +680,60 @@ export default function CodeReview() {
           )}
         </div>
       </div>
+
+      {/* Code Viewer Dialog */}
+      <Dialog open={viewCodeDialog.open} onOpenChange={(open) => setViewCodeDialog({ open })}>
+        <DialogContent className="max-w-4xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span>{viewCodeDialog.filePath}</span>
+              {viewCodeDialog.fileUrl && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  asChild
+                >
+                  <a
+                    href={viewCodeDialog.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    View on GitHub
+                  </a>
+                </Button>
+              )}
+            </DialogTitle>
+            {viewCodeDialog.line && (
+              <DialogDescription>
+                Line {viewCodeDialog.line}
+              </DialogDescription>
+            )}
+          </DialogHeader>
+          <ScrollArea className="h-[60vh] w-full rounded-md border">
+            <pre className="p-4 text-sm">
+              <code className="language-javascript">
+                {viewCodeDialog.content?.split('\n').map((line, idx) => (
+                  <div
+                    key={idx}
+                    className={`${
+                      viewCodeDialog.line && idx + 1 === viewCodeDialog.line
+                        ? 'bg-yellow-100 dark:bg-yellow-900/20'
+                        : ''
+                    }`}
+                  >
+                    <span className="inline-block w-12 text-right pr-4 text-muted-foreground select-none">
+                      {idx + 1}
+                    </span>
+                    {line}
+                  </div>
+                ))}
+              </code>
+            </pre>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
