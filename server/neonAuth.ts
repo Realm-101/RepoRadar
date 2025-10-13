@@ -80,11 +80,34 @@ export async function setupAuth(app: express.Express) {
       // Check if user is stored in session
       const sessionUser = (req.session as any).user;
 
-      if (sessionUser) {
-        res.json({
-          authenticated: true,
-          user: sessionUser
-        });
+      if (sessionUser && sessionUser.id) {
+        // Fetch fresh user data from database to ensure we have latest info
+        const dbUser = await storage.getUser(sessionUser.id);
+        
+        if (dbUser) {
+          // Return fresh data from database with session structure
+          res.json({
+            authenticated: true,
+            user: {
+              id: dbUser.id,
+              email: dbUser.email,
+              name: `${dbUser.firstName || ''} ${dbUser.lastName || ''}`.trim() || dbUser.email?.split('@')[0] || '',
+              firstName: dbUser.firstName,
+              lastName: dbUser.lastName,
+              profileImageUrl: dbUser.profileImageUrl,
+              bio: dbUser.bio,
+              subscriptionTier: dbUser.subscriptionTier,
+              subscriptionStatus: dbUser.subscriptionStatus,
+              createdAt: dbUser.createdAt,
+            }
+          });
+        } else {
+          // User in session but not in database (shouldn't happen)
+          res.status(401).json({
+            authenticated: false,
+            message: "User not found"
+          });
+        }
       } else {
         res.status(401).json({
           authenticated: false,
@@ -357,6 +380,7 @@ export const isAuthenticated: express.RequestHandler = async (req, res, next) =>
     
     console.log('[Auth] Session user:', sessionUser ? 'exists' : 'missing');
     console.log('[Auth] Session userId:', sessionUserId || 'missing');
+    console.log('[Auth] Full session data:', JSON.stringify(req.session, null, 2));
 
     // Support both session.user and session.userId patterns
     if (sessionUser || sessionUserId) {

@@ -253,7 +253,7 @@ export default function BatchAnalyze() {
       <Header />
 
       {/* Hero Section */}
-      <section className="py-12 bg-gradient-to-r from-dark via-card to-dark">
+      <section className="py-12 pt-32 bg-gradient-to-r from-dark via-card to-dark">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold mb-4">

@@ -50,12 +50,12 @@ export default function Home() {
   }, [isAuthenticated, isLoading, toast]);
 
   const { data: recentAnalyses, isLoading: loadingAnalyses } = useQuery<any[]>({
-    queryKey: ['/api/analyses/recent'],
+    queryKey: ['/api/analyses/user/recent'],
     enabled: isAuthenticated,
   });
 
   const { data: trendingRepos, isLoading: loadingTrending } = useQuery<any[]>({
-    queryKey: ['/api/repositories/recent'],
+    queryKey: ['/api/repositories/trending'],
     enabled: isAuthenticated,
   });
 

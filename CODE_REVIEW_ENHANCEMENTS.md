@@ -129,9 +129,40 @@ Potential improvements:
 8. User reviews PR on GitHub and merges if satisfied
 ```
 
+## Troubleshooting
+
+### "Failed to load code" Error
+
+If you get this error when clicking "View Code":
+1. **Check the file path** - Make sure the file exists in the repository
+2. **Provide a GitHub token** - Some repositories may require authentication
+3. **Check rate limits** - GitHub API has rate limits (60 requests/hour without token, 5000 with token)
+4. **Verify repository access** - Ensure the repository is public or you have access
+
+### "Failed to create pull request" Error
+
+Common causes:
+1. **Missing GitHub token** - Token is required for creating PRs
+2. **Insufficient permissions** - Token needs `repo` scope
+3. **Branch already exists** - The auto-generated branch name may conflict
+4. **Repository permissions** - You need write access to create PRs
+
+### GitHub Token Setup
+
+1. Go to https://github.com/settings/tokens
+2. Click "Generate new token (classic)"
+3. Give it a descriptive name (e.g., "RepoRadar Code Review")
+4. Select scopes:
+   - ✅ `repo` (Full control of private repositories)
+5. Click "Generate token"
+6. Copy the token immediately (you won't see it again!)
+7. Paste it into the GitHub Token field in RepoRadar
+
 ## Notes
 
 - The AI-generated fixes should always be reviewed before merging
 - The feature works best with public repositories
 - GitHub token permissions should be limited to only what's needed
 - The default base branch is assumed to be `main` (can be customized)
+- GitHub API requires a User-Agent header (automatically added)
+- Rate limits: 60 requests/hour without token, 5000 with token

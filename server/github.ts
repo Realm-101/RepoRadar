@@ -127,7 +127,13 @@ class GitHubService {
   ): Promise<GitHubRepository[]> {
     try {
       const response = await fetch(
-        `${this.baseUrl}/search/repositories?q=${encodeURIComponent(query)}&sort=${sort}&per_page=${limit}`
+        `${this.baseUrl}/search/repositories?q=${encodeURIComponent(query)}&sort=${sort}&per_page=${limit}`,
+        {
+          headers: {
+            'User-Agent': 'RepoRadar',
+            'Accept': 'application/vnd.github.v3+json'
+          }
+        }
       );
       
       if (!response.ok) {
@@ -144,9 +150,44 @@ class GitHubService {
     }
   }
 
+  /**
+   * Get trending repositories from GitHub
+   * Uses GitHub's search API to find recently created/updated repos with high stars
+   */
+  async getTrendingRepositories(limit = 5): Promise<GitHubRepository[]> {
+    try {
+      // Get repos created in the last 7 days with most stars
+      const date = new Date();
+      date.setDate(date.getDate() - 7);
+      const dateStr = date.toISOString().split('T')[0];
+      
+      const query = `created:>${dateStr} stars:>100`;
+      const response = await fetch(
+        `${this.baseUrl}/search/repositories?q=${encodeURIComponent(query)}&sort=stars&order=desc&per_page=${limit}`
+      );
+      
+      if (!response.ok) {
+        await this.handleGitHubError(response, 'trending repositories fetch');
+      }
+      
+      const data = await response.json();
+      return data.items || [];
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      this.handleNetworkError(error, 'trending repositories fetch');
+    }
+  }
+
   async getRepository(owner: string, repo: string): Promise<GitHubRepository | null> {
     try {
-      const response = await fetch(`${this.baseUrl}/repos/${owner}/${repo}`);
+      const response = await fetch(`${this.baseUrl}/repos/${owner}/${repo}`, {
+        headers: {
+          'User-Agent': 'RepoRadar',
+          'Accept': 'application/vnd.github.v3+json'
+        }
+      });
       
       if (!response.ok) {
         if (response.status === 404) {
@@ -259,27 +300,51 @@ class GitHubService {
     return null;
   }
 
-  async getFileContent(owner: string, repo: string, path: string, ref?: string): Promise<string | null> {
+  async getFileContent(owner: string, repo: string, path: string, ref?: string, token?: string): Promise<string | null> {
     try {
       const url = ref 
         ? `${this.baseUrl}/repos/${owner}/${repo}/contents/${path}?ref=${ref}`
         : `${this.baseUrl}/repos/${owner}/${repo}/contents/${path}`;
       
-      const response = await fetch(url, {
-        headers: {
-          'Accept': 'application/vnd.github.v3.raw'
-        }
-      });
+      const headers: Record<string, string> = {
+        'Accept': 'application/vnd.github.v3.raw',
+        'User-Agent': 'RepoRadar'
+      };
+      
+      if (token) {
+        // GitHub uses 'token' prefix for personal access tokens, not 'Bearer'
+        headers['Authorization'] = `token ${token}`;
+      }
+      
+      console.log('[GitHub API] Fetching file:', { url, hasToken: !!token });
+      
+      const response = await fetch(url, { headers });
+      
+      console.log('[GitHub API] Response status:', response.status);
       
       if (!response.ok) {
         if (response.status === 404) {
+          console.log('[GitHub API] File not found (404)');
           return null;
         }
+        
+        // Log the error response body for debugging
+        const errorBody = await response.text();
+        console.error('[GitHub API] Error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorBody
+        });
+        
         await this.handleGitHubError(response, 'file content fetch');
       }
       
-      return await response.text();
+      const content = await response.text();
+      console.log('[GitHub API] File fetched successfully, length:', content.length);
+      
+      return content;
     } catch (error) {
+      console.error('[GitHub API] Exception in getFileContent:', error);
       if (error instanceof AppError) {
         throw error;
       }
@@ -299,11 +364,12 @@ class GitHubService {
     try {
       const headers: Record<string, string> = {
         'Accept': 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'User-Agent': 'RepoRadar'
       };
       
       if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+        headers['Authorization'] = `token ${token}`;
       }
       
       const response = await fetch(`${this.baseUrl}/repos/${owner}/${repo}/pulls`, {
@@ -344,11 +410,12 @@ class GitHubService {
     try {
       const headers: Record<string, string> = {
         'Accept': 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'User-Agent': 'RepoRadar'
       };
       
       if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+        headers['Authorization'] = `token ${token}`;
       }
       
       // Get the SHA of the base branch
@@ -402,11 +469,12 @@ class GitHubService {
     try {
       const headers: Record<string, string> = {
         'Accept': 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'User-Agent': 'RepoRadar'
       };
       
       if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+        headers['Authorization'] = `token ${token}`;
       }
       
       // Get current file to get its SHA

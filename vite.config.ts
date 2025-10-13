@@ -9,6 +9,8 @@ export default defineConfig({
   define: {
     'import.meta.env.VITE_STACK_PROJECT_ID': JSON.stringify(process.env.NEXT_PUBLIC_STACK_PROJECT_ID),
     'import.meta.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY': JSON.stringify(process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY),
+    // Polyfill global for gray-matter
+    global: 'globalThis',
   },
   resolve: {
     alias: {
@@ -19,18 +21,23 @@ export default defineConfig({
       "next/navigation": path.resolve(import.meta.dirname, "client/src/lib/next-navigation-mock.ts"),
       "next/link": path.resolve(import.meta.dirname, "client/src/lib/next-link-mock.tsx"),
       "next/headers": path.resolve(import.meta.dirname, "client/src/lib/next-headers-mock.ts"),
+      // Polyfill Buffer for gray-matter
+      buffer: 'buffer/',
     },
   },
   optimizeDeps: {
     // Exclude Stack Auth server components from optimization
     exclude: ['@stackframe/stack-sc', '@stackframe/stack'],
-    include: ['tiny-case', 'property-expr', 'toposort', 'normalize-wheel'],
+    include: ['tiny-case', 'property-expr', 'toposort', 'normalize-wheel', 'buffer'],
     esbuildOptions: {
       // Resolve Next.js modules to our mocks during optimization
       alias: {
         'next/navigation': path.resolve(import.meta.dirname, "client/src/lib/next-navigation-mock.ts"),
         'next/link': path.resolve(import.meta.dirname, "client/src/lib/next-link-mock.tsx"),
         'next/headers': path.resolve(import.meta.dirname, "client/src/lib/next-headers-mock.ts"),
+      },
+      define: {
+        global: 'globalThis',
       },
     },
   },

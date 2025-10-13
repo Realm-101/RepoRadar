@@ -65,6 +65,7 @@ export const users = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
+  bio: text("bio"), // User biography
   
   // Authentication fields
   passwordHash: varchar("password_hash", { length: 255 }),
@@ -90,6 +91,7 @@ export const users = pgTable("users", {
   analysisCount: integer("analysis_count").default(0), // Daily analysis count for rate limiting
   lastAnalysisReset: timestamp("last_analysis_reset").defaultNow(),
   apiKey: varchar("api_key"), // For API access
+  githubToken: varchar("github_token", { length: 255 }), // GitHub Personal Access Token for code review
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

@@ -49,7 +49,7 @@ export default function Collections() {
     <div className="min-h-screen bg-dark text-white">
       <Header />
       
-      <div className="max-w-6xl mx-auto px-6 py-8">
+      <div className="max-w-6xl mx-auto px-6 py-8 pt-32">
         {/* Page Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold gradient-text mb-2">My Collections</h1>

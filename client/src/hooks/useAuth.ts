@@ -1,7 +1,7 @@
 import { useNeonAuth } from "@/contexts/neon-auth-context";
 
 export function useAuth() {
-  const { user, isLoading, isAuthenticated, login, signup, logout } = useNeonAuth();
+  const { user, isLoading, isAuthenticated, login, signup, logout, refetchUser } = useNeonAuth();
 
   return {
     user,
@@ -10,5 +10,6 @@ export function useAuth() {
     login,
     signup,
     logout,
+    refetchUser,
   };
 }

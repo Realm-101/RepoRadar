@@ -225,7 +225,7 @@ export default function DocsPage() {
       
       <Header />
       
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8 pt-32">
         {/* Search Bar */}
         <div className="mb-8 max-w-2xl mx-auto">
           <SuspenseComponent fallback={

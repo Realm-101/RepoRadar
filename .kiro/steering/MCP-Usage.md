@@ -50,7 +50,7 @@ You have access to these MCP servers and should use them proactively when releva
 - **How**: Search for relevant MCP servers and offer to install them
 - **Example scenarios**: "I need database tools", "Help with AWS", "API testing tools"
 
-### Chrome DevTools (DISABLED - 25+ tools)
+### Chrome DevTools (ENABLED - 25+ tools)
 - **When to use**: For web testing, browser automation, or performance analysis
 - **Status**: Currently disabled to reduce token costs
 - **How to enable**: Ask user to enable it when needed

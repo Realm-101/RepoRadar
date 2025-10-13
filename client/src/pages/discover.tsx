@@ -239,7 +239,7 @@ export default function Discover() {
     <div className="min-h-screen bg-dark text-white">
       <Header />
       
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-6 py-8 pt-32">
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold gradient-text mb-4">Discover Similar Repositories</h1>
           <p className="text-xl text-gray-400">Find repositories that match your functionality needs and use cases</p>

@@ -203,7 +203,7 @@ export default function AdvancedAnalytics() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <div className="container mx-auto p-6 max-w-7xl">
+      <div className="container mx-auto p-6 pt-32 max-w-7xl">
       <div className="flex justify-between items-start mb-8">
         <div>
           <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">

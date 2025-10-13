@@ -62,7 +62,7 @@ export default function Analytics() {
     return (
       <div className="min-h-screen bg-background">
         <Header />
-        <div className="py-12">
+        <div className="py-12 pt-32">
           <div className="max-w-7xl mx-auto px-6">
             <Card className="p-8 text-center">
               <h2 className="text-2xl font-bold mb-4">Analytics Dashboard</h2>
@@ -83,7 +83,7 @@ export default function Analytics() {
     return (
       <div className="min-h-screen bg-background">
         <Header />
-        <div className="py-12">
+        <div className="py-12 pt-32">
           <div className="max-w-7xl mx-auto px-6">
             {/* Header Skeleton */}
             <div className="mb-8">
@@ -114,7 +114,7 @@ export default function Analytics() {
     return (
       <div className="min-h-screen bg-background">
         <Header />
-        <div className="py-12">
+        <div className="py-12 pt-32">
           <div className="max-w-7xl mx-auto px-6">
             {/* Header */}
             <div className="mb-8">
@@ -166,7 +166,7 @@ export default function Analytics() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <div className="py-12">
+      <div className="py-12 pt-32">
         <div className="max-w-7xl mx-auto px-6">
         {/* Header */}
         <div className="mb-8">

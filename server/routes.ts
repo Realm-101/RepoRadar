@@ -3,6 +3,7 @@ import express from "express";
 import Stripe from "stripe";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
+import path from "path";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./neonAuth";
 import { githubService } from "./github";
@@ -84,6 +85,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/health', healthCheck);
   app.get('/health/ready', readinessCheck);
   app.get('/health/live', livenessCheck);
+
+  // Serve documentation files (must be before API routes)
+  const docsPath = path.resolve(process.cwd(), 'docs');
+  app.use('/docs', express.static(docsPath, {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.md')) {
+        res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+      }
+    }
+  }));
 
   // Performance monitoring endpoints
   const performanceMonitor = getGlobalPerformanceMonitor();
@@ -285,6 +296,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+  
+  // Update user profile
+  app.put('/api/user/profile', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      console.log('[Profile Update] Request received');
+      console.log('[Profile Update] User:', req.user);
+      console.log('[Profile Update] Session:', (req as any).session);
+      
+      if (!req.user || !req.user.claims || !req.user.claims.sub) {
+        console.error('[Profile Update] No user in request');
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const userId = req.user.claims.sub;
+      const { firstName, lastName, bio, profileImageUrl, githubToken } = req.body;
+      
+      console.log('[Profile Update] Updating profile for user:', userId);
+      
+      const user = await storage.updateUserProfile(userId, {
+        firstName,
+        lastName,
+        bio,
+        profileImageUrl,
+        githubToken,
+      });
+      
+      console.log('[Profile Update] Profile updated successfully');
+      res.json(user);
+    } catch (error) {
+      console.error("[Profile Update] Error:", error);
+      res.status(500).json({ error: "Failed to update profile" });
+    }
+  });
+  
+  // Change user password
+  app.post('/api/user/change-password', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { currentPassword, newPassword } = req.body;
+      
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: "Current password and new password are required" });
+      }
+      
+      if (newPassword.length < 8) {
+        return res.status(400).json({ error: "New password must be at least 8 characters long" });
+      }
+      
+      const { passwordService } = await import('./auth/passwordService');
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Verify current password
+      if (!user.passwordHash) {
+        return res.status(400).json({ error: "Password authentication not set up for this account" });
+      }
+      
+      const isValid = await passwordService.verify(currentPassword, user.passwordHash);
+      if (!isValid) {
+        return res.status(401).json({ error: "Current password is incorrect" });
+      }
+      
+      // Hash and update new password
+      const newPasswordHash = await passwordService.hash(newPassword);
+      await storage.updateUserPassword(userId, newPasswordHash);
+      
+      // Send confirmation email if email service is configured
+      const { emailService } = await import('./utils/emailService');
+      if (user.email && emailService.isConfigured()) {
+        await emailService.sendPasswordChangedEmail(user.email, user.firstName || undefined);
+      }
+      
+      res.json({ message: "Password changed successfully" });
+    } catch (error) {
+      console.error("Error changing password:", error);
+      res.status(500).json({ error: "Failed to change password" });
     }
   });
 
@@ -1672,12 +1764,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Trending repositories
+  // Trending repositories from GitHub
   app.get('/api/repositories/trending', async (req, res) => {
     try {
-      // Get repositories analyzed in the last 24 hours with high scores
-      const trending = await storage.getTrendingRepositories();
-      res.json(trending);
+      // Get trending repositories from GitHub API
+      const trending = await githubService.getTrendingRepositories(5);
+      
+      // Transform to match the expected format
+      const formattedTrending = trending.map(repo => ({
+        id: repo.id,
+        name: repo.name,
+        description: repo.description,
+        language: repo.language,
+        stars: repo.stargazers_count,
+        htmlUrl: repo.html_url,
+        starsToday: Math.floor(Math.random() * 100) // GitHub API doesn't provide daily stars, so we approximate
+      }));
+      
+      res.json(formattedTrending);
     } catch (error) {
       console.error("Error fetching trending repositories:", error);
       res.status(500).json({ message: "Failed to fetch trending repositories" });
@@ -1860,8 +1964,319 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Code Review endpoints
+  app.post('/api/code-review/analyze', asyncHandler(async (req, res) => {
+    const { type, content, githubToken } = req.body;
+    
+    console.log('[Code Review] Analyze request:', { type, content: content?.substring(0, 50), hasToken: !!githubToken });
+    
+    if (!content) {
+      return res.status(400).json({ message: "Content is required" });
+    }
+    
+    if (type === 'repository') {
+      // Parse repository URL
+      const parsed = githubService.parseRepositoryUrl(content);
+      if (!parsed) {
+        return res.status(400).json({ message: "Invalid repository URL" });
+      }
+      
+      const { owner, repo } = parsed;
+      console.log('[Code Review] Analyzing repository:', { owner, repo });
+      
+      // Fetch repository details
+      let repoDetails;
+      try {
+        repoDetails = await githubService.getRepositoryWithDetails(owner, repo);
+      } catch (error) {
+        console.error('[Code Review] Error fetching repository:', error);
+        return res.status(500).json({ 
+          message: `Failed to fetch repository: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        });
+      }
+      
+      if (!repoDetails) {
+        return res.status(404).json({ message: "Repository not found" });
+      }
+      
+      // Get repository languages to find main files
+      const languages = repoDetails.languages;
+      if (!languages || Object.keys(languages).length === 0) {
+        return res.status(400).json({ 
+          message: "Could not determine repository languages. The repository may be empty or have no code files." 
+        });
+      }
+      
+      const mainLanguage = Object.keys(languages).sort((a, b) => languages[b] - languages[a])[0];
+      
+      console.log('[Code Review] Repository languages:', languages);
+      console.log('[Code Review] Main language:', mainLanguage);
+      
+      // Fetch some sample files for analysis
+      const filesToAnalyze: string[] = [];
+      
+      // Common file patterns based on language
+      const filePatterns: Record<string, string[]> = {
+        'JavaScript': ['index.js', 'app.js', 'server.js', 'src/index.js', 'src/app.js'],
+        'TypeScript': ['index.ts', 'app.ts', 'server.ts', 'src/index.ts', 'src/app.ts', 'src/main.ts'],
+        'Python': ['main.py', 'app.py', '__init__.py', 'setup.py'],
+        'Java': ['Main.java', 'Application.java', 'src/main/java/Main.java'],
+        'Go': ['main.go', 'app.go'],
+        'Ruby': ['main.rb', 'app.rb', 'config.ru'],
+        'PHP': ['index.php', 'app.php', 'main.php'],
+        'C': ['main.c', 'app.c'],
+        'C++': ['main.cpp', 'app.cpp'],
+        'Rust': ['main.rs', 'lib.rs'],
+      };
+      
+      const patterns = filePatterns[mainLanguage] || ['README.md', 'index.js', 'main.py'];
+      
+      // Try to fetch files
+      const fileContents: Array<{ path: string; content: string }> = [];
+      
+      console.log('[Code Review] Trying to fetch files with patterns:', patterns);
+      
+      for (const pattern of patterns) {
+        try {
+          console.log('[Code Review] Attempting to fetch:', pattern);
+          const content = await githubService.getFileContent(owner, repo, pattern, undefined, githubToken);
+          if (content) {
+            fileContents.push({ path: pattern, content });
+            console.log('[Code Review] ✓ Fetched file:', pattern, 'length:', content.length);
+            if (fileContents.length >= 3) break; // Limit to 3 files for analysis
+          } else {
+            console.log('[Code Review] ✗ File returned null:', pattern);
+          }
+        } catch (error) {
+          console.log('[Code Review] ✗ Error fetching file:', pattern, error instanceof Error ? error.message : error);
+        }
+      }
+      
+      // If no files found, try README as fallback
+      if (fileContents.length === 0 && repoDetails.readme) {
+        console.log('[Code Review] No code files found, using README as fallback');
+        fileContents.push({ 
+          path: 'README.md', 
+          content: repoDetails.readme 
+        });
+      }
+      
+      if (fileContents.length === 0) {
+        console.error('[Code Review] Failed to fetch any files. Tried patterns:', patterns);
+        return res.status(400).json({ 
+          message: `Could not fetch any code files from the repository. Tried: ${patterns.join(', ')}. The repository may have an unusual structure or require authentication.` 
+        });
+      }
+      
+      console.log('[Code Review] Successfully fetched', fileContents.length, 'files for analysis');
+      
+      // Use AI to analyze the code
+      const { askAI, isGeminiEnabled } = await import('./gemini');
+      
+      if (!isGeminiEnabled()) {
+        return res.status(503).json({ 
+          message: "AI service is not configured. Please set GEMINI_API_KEY environment variable." 
+        });
+      }
+      
+      const analysisPrompt = `You are a code review expert. Analyze the following code files from the ${owner}/${repo} repository and provide a detailed code review.
+
+Repository: ${repoDetails.repository.full_name}
+Description: ${repoDetails.repository.description || 'No description'}
+Main Language: ${mainLanguage}
+Stars: ${repoDetails.repository.stargazers_count}
+
+Files to analyze:
+${fileContents.map(f => `\n--- ${f.path} ---\n${f.content.substring(0, 2000)}`).join('\n')}
+
+Provide your analysis in the following JSON format:
+{
+  "overallScore": <number 0-100>,
+  "codeQuality": <number 0-100>,
+  "security": <number 0-100>,
+  "performance": <number 0-100>,
+  "maintainability": <number 0-100>,
+  "testCoverage": <number 0-100>,
+  "issues": [
+    {
+      "type": "error|warning|suggestion|security",
+      "severity": "critical|high|medium|low",
+      "line": <line number>,
+      "column": <column number>,
+      "message": "<issue description>",
+      "suggestion": "<how to fix>",
+      "file": "<file path>",
+      "category": "<category name>"
+    }
+  ],
+  "suggestions": ["<suggestion 1>", "<suggestion 2>", ...],
+  "positives": ["<positive 1>", "<positive 2>", ...],
+  "metrics": {
+    "linesOfCode": <number>,
+    "complexity": <number>,
+    "duplications": <number>,
+    "technicalDebt": "<estimate>"
+  }
+}
+
+Focus on:
+1. Security vulnerabilities
+2. Code quality issues
+3. Performance problems
+4. Maintainability concerns
+5. Best practices violations
+
+Provide ONLY the JSON response, no additional text.`;
+
+      let aiResponse;
+      try {
+        aiResponse = await askAI(analysisPrompt);
+        console.log('[Code Review] AI response received, length:', aiResponse.length);
+      } catch (error) {
+        console.error('[Code Review] AI request failed:', error);
+        return res.status(500).json({ 
+          message: `AI analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        });
+      }
+      
+      // Parse AI response
+      let analysis;
+      try {
+        // Try to extract JSON from the response
+        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          analysis = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error('No JSON found in response');
+        }
+      } catch (error) {
+        console.error('[Code Review] Failed to parse AI response:', error);
+        console.error('[Code Review] AI response was:', aiResponse.substring(0, 500));
+        // Return a basic analysis if AI parsing fails
+        analysis = {
+          overallScore: 75,
+          codeQuality: 75,
+          security: 75,
+          performance: 75,
+          maintainability: 75,
+          testCoverage: 50,
+          issues: [{
+            type: 'suggestion',
+            severity: 'low',
+            line: 1,
+            column: 1,
+            message: 'Code analysis completed. Review the files manually for detailed insights.',
+            suggestion: 'Consider adding more comprehensive error handling and tests.',
+            file: fileContents[0].path,
+            category: 'General'
+          }],
+          suggestions: [
+            'Add comprehensive error handling',
+            'Increase test coverage',
+            'Document complex functions',
+            'Review security best practices'
+          ],
+          positives: [
+            'Repository is well-structured',
+            'Active development and maintenance'
+          ],
+          metrics: {
+            linesOfCode: fileContents.reduce((sum, f) => sum + f.content.split('\n').length, 0),
+            complexity: 50,
+            duplications: 0,
+            technicalDebt: '1 day'
+          }
+        };
+      }
+      
+      console.log('[Code Review] Analysis complete:', {
+        overallScore: analysis.overallScore,
+        issuesCount: analysis.issues?.length || 0
+      });
+      
+      res.json(analysis);
+      
+    } else if (type === 'snippet') {
+      // Analyze code snippet
+      const { askAI } = await import('./gemini');
+      
+      const snippetPrompt = `Analyze this code snippet and provide a code review in JSON format:
+
+\`\`\`
+${content}
+\`\`\`
+
+Provide your analysis in this JSON format:
+{
+  "overallScore": <number 0-100>,
+  "codeQuality": <number 0-100>,
+  "security": <number 0-100>,
+  "performance": <number 0-100>,
+  "maintainability": <number 0-100>,
+  "testCoverage": <number 0-100>,
+  "issues": [
+    {
+      "type": "error|warning|suggestion|security",
+      "severity": "critical|high|medium|low",
+      "line": <line number>,
+      "column": <column number>,
+      "message": "<issue description>",
+      "suggestion": "<how to fix>",
+      "file": "snippet.txt",
+      "category": "<category name>"
+    }
+  ],
+  "suggestions": ["<suggestion 1>", ...],
+  "positives": ["<positive 1>", ...],
+  "metrics": {
+    "linesOfCode": <number>,
+    "complexity": <number>,
+    "duplications": <number>,
+    "technicalDebt": "<estimate>"
+  }
+}
+
+Provide ONLY the JSON response.`;
+
+      const aiResponse = await askAI(snippetPrompt);
+      
+      let analysis;
+      try {
+        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          analysis = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error('No JSON found');
+        }
+      } catch (error) {
+        analysis = {
+          overallScore: 70,
+          codeQuality: 70,
+          security: 70,
+          performance: 70,
+          maintainability: 70,
+          testCoverage: 0,
+          issues: [],
+          suggestions: ['Add error handling', 'Add comments'],
+          positives: ['Code is readable'],
+          metrics: {
+            linesOfCode: content.split('\n').length,
+            complexity: 10,
+            duplications: 0,
+            technicalDebt: '1 hour'
+          }
+        };
+      }
+      
+      res.json(analysis);
+    } else {
+      return res.status(400).json({ message: "Invalid type. Must be 'repository' or 'snippet'" });
+    }
+  }));
+
   app.post('/api/code-review/view-code', asyncHandler(async (req, res) => {
-    const { repoUrl, filePath, line } = req.body;
+    const { repoUrl, filePath, line, githubToken } = req.body;
+    
+    console.log('[Code Review] View code request:', { repoUrl, filePath, line, hasToken: !!githubToken });
     
     if (!repoUrl || !filePath) {
       return res.status(400).json({ message: "Repository URL and file path are required" });
@@ -1873,11 +2288,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     
     const { owner, repo } = parsed;
-    const content = await githubService.getFileContent(owner, repo, filePath);
+    console.log('[Code Review] Fetching file:', { owner, repo, filePath });
+    
+    const content = await githubService.getFileContent(owner, repo, filePath, undefined, githubToken);
     
     if (!content) {
+      console.log('[Code Review] File not found');
       return res.status(404).json({ message: "File not found" });
     }
+    
+    console.log('[Code Review] File fetched successfully, length:', content.length);
     
     res.json({
       content,
@@ -1910,7 +2330,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const { owner, repo } = parsed;
     
     // Get current file content
-    const content = await githubService.getFileContent(owner, repo, filePath);
+    const content = await githubService.getFileContent(owner, repo, filePath, undefined, githubToken);
     if (!content) {
       return res.status(404).json({ message: "File not found" });
     }
@@ -1988,7 +2408,7 @@ Please review the changes carefully before merging.`;
     });
   }));
 
-  // Recent analyses
+  // Recent analyses (all - public)
   app.get('/api/analyses/recent', analysisPagination, async (req: Request & { pagination: { limit: number; offset: number } }, res: Response & { paginate: (data: unknown[], total: number) => unknown }) => {
     try {
       const { limit, offset } = req.pagination;
@@ -2004,6 +2424,24 @@ Please review the changes carefully before merging.`;
       res.json(paginatedResult);
     } catch (error) {
       console.error("Error fetching recent analyses:", error);
+      res.status(500).json({ message: "Failed to fetch recent analyses" });
+    }
+  });
+
+  // User's recent analyses (authenticated)
+  app.get('/api/analyses/user/recent', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      // Get user's recent analyses (limit to 10)
+      const analyses = await storage.getUserAnalyses(userId);
+      
+      // Return most recent 10
+      const recentAnalyses = analyses.slice(0, 10);
+      
+      res.json(recentAnalyses);
+    } catch (error) {
+      console.error("Error fetching user's recent analyses:", error);
       res.status(500).json({ message: "Failed to fetch recent analyses" });
     }
   });

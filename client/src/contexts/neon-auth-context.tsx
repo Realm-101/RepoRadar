@@ -20,6 +20,7 @@ interface NeonAuthContextType {
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name: string) => Promise<void>;
   logout: () => void;
+  refetchUser: () => Promise<void>;
 }
 
 const NeonAuthContext = createContext<NeonAuthContextType | undefined>(undefined);
@@ -29,27 +30,27 @@ export function NeonAuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    // Check if user is authenticated
-    const checkAuth = async () => {
-      try {
-        const response = await fetch('/api/auth/user', {
-          credentials: 'include',
-        });
-        
-        if (response.ok) {
-          const userData = await response.json();
-          if (userData.authenticated && userData.user) {
-            setUser(userData.user);
-          }
+  // Function to check/refetch user authentication
+  const checkAuth = async () => {
+    try {
+      const response = await fetch('/api/auth/user', {
+        credentials: 'include',
+      });
+      
+      if (response.ok) {
+        const userData = await response.json();
+        if (userData.authenticated && userData.user) {
+          setUser(userData.user);
         }
-      } catch (error) {
-        console.error('Auth check error:', error);
-      } finally {
-        setIsLoading(false);
       }
-    };
+    } catch (error) {
+      console.error('Auth check error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     checkAuth();
   }, []);
 
@@ -105,6 +106,10 @@ export function NeonAuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const refetchUser = async () => {
+    await checkAuth();
+  };
+
   const value = {
     user,
     isLoading,
@@ -112,6 +117,7 @@ export function NeonAuthProvider({ children }: { children: React.ReactNode }) {
     login,
     signup,
     logout,
+    refetchUser,
   };
 
   return (

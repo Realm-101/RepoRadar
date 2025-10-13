@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { Link } from "wouter";
 import { 
   Code, FileCode, GitBranch, AlertTriangle, CheckCircle, 
   XCircle, Info, Lightbulb, Shield, Zap, Clock, 
@@ -62,6 +64,7 @@ interface ReviewResult {
 
 export default function CodeReview() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [repoUrl, setRepoUrl] = useState("");
   const [codeSnippet, setCodeSnippet] = useState("");
   const [reviewResult, setReviewResult] = useState<ReviewResult | null>(null);
@@ -73,84 +76,24 @@ export default function CodeReview() {
     line?: number;
     fileUrl?: string;
   }>({ open: false });
-  const [githubToken, setGithubToken] = useState("");
+  
+  // Get GitHub token from user profile
+  const githubToken = (user as any)?.githubToken || "";
 
   const reviewMutation = useMutation({
-    mutationFn: async (data: { type: string; content: string }) => {
-      // Simulate AI code review
-      await new Promise(resolve => setTimeout(resolve, 3000));
+    mutationFn: async (data: { type: string; content: string; githubToken?: string }) => {
+      const response = await fetch('/api/code-review/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
       
-      // Mock result for demonstration
-      return {
-        overallScore: 78,
-        codeQuality: 82,
-        security: 75,
-        performance: 71,
-        maintainability: 85,
-        testCoverage: 68,
-        issues: [
-          {
-            type: 'security' as const,
-            severity: 'high' as const,
-            line: 42,
-            column: 15,
-            message: 'SQL injection vulnerability detected in user input handling',
-            suggestion: 'Use parameterized queries or prepared statements',
-            file: 'src/api/database.js',
-            category: 'Security'
-          },
-          {
-            type: 'error' as const,
-            severity: 'critical' as const,
-            line: 156,
-            column: 8,
-            message: 'Potential null pointer exception',
-            suggestion: 'Add null check before accessing object properties',
-            file: 'src/utils/helpers.js',
-            category: 'Runtime Error'
-          },
-          {
-            type: 'warning' as const,
-            severity: 'medium' as const,
-            line: 89,
-            column: 12,
-            message: 'Unused variable "tempData"',
-            suggestion: 'Remove unused variable to improve code clarity',
-            file: 'src/components/Dashboard.jsx',
-            category: 'Code Quality'
-          },
-          {
-            type: 'suggestion' as const,
-            severity: 'low' as const,
-            line: 234,
-            column: 4,
-            message: 'Function complexity is too high (cyclomatic complexity: 15)',
-            suggestion: 'Consider breaking this function into smaller, more focused functions',
-            file: 'src/services/analyzer.js',
-            category: 'Maintainability'
-          },
-        ],
-        suggestions: [
-          'Implement comprehensive error handling throughout the application',
-          'Add unit tests to increase code coverage from 68% to at least 80%',
-          'Refactor complex functions to improve maintainability',
-          'Update dependencies to latest stable versions for security patches',
-          'Add input validation for all user-facing endpoints',
-        ],
-        positives: [
-          'Good separation of concerns with clear module boundaries',
-          'Consistent coding style across the project',
-          'Efficient use of modern JavaScript features',
-          'Well-documented API endpoints',
-          'Proper use of environment variables for configuration',
-        ],
-        metrics: {
-          linesOfCode: 12458,
-          complexity: 145,
-          duplications: 23,
-          technicalDebt: '3.5 days',
-        }
-      };
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to analyze code');
+      }
+      
+      return await response.json();
     },
     onSuccess: (data) => {
       setReviewResult(data);
@@ -159,17 +102,18 @@ export default function CodeReview() {
         description: `Found ${data.issues.length} issues to address` 
       });
     },
-    onError: () => {
+    onError: (error: Error) => {
+      console.error('[Code Review] Error:', error);
       toast({ 
         title: "Review failed", 
-        description: "Unable to complete code review",
+        description: error.message || "Unable to complete code review",
         variant: "destructive" 
       });
     },
   });
 
   const viewCodeMutation = useMutation({
-    mutationFn: async (data: { repoUrl: string; filePath: string; line?: number }) => {
+    mutationFn: async (data: { repoUrl: string; filePath: string; line?: number; githubToken?: string }) => {
       const response = await fetch('/api/code-review/view-code', {
         method: 'POST',
         body: JSON.stringify(data),
@@ -177,7 +121,8 @@ export default function CodeReview() {
       });
       
       if (!response.ok) {
-        throw new Error('Failed to fetch code');
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to fetch code');
       }
       
       return await response.json();
@@ -255,9 +200,16 @@ export default function CodeReview() {
 
   const startReview = () => {
     if (activeTab === "repository" && repoUrl) {
-      reviewMutation.mutate({ type: "repository", content: repoUrl });
+      reviewMutation.mutate({ 
+        type: "repository", 
+        content: repoUrl,
+        githubToken: githubToken || undefined
+      });
     } else if (activeTab === "snippet" && codeSnippet) {
-      reviewMutation.mutate({ type: "snippet", content: codeSnippet });
+      reviewMutation.mutate({ 
+        type: "snippet", 
+        content: codeSnippet 
+      });
     }
   };
 
@@ -274,7 +226,8 @@ export default function CodeReview() {
     viewCodeMutation.mutate({
       repoUrl,
       filePath: issue.file,
-      line: issue.line
+      line: issue.line,
+      githubToken: githubToken || undefined
     });
   };
 
@@ -328,7 +281,7 @@ export default function CodeReview() {
   };
 
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
+    <div className="container mx-auto p-6 pt-32 max-w-7xl">
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
           AI-Powered Code Review
@@ -365,27 +318,27 @@ export default function CodeReview() {
                       onChange={(e) => setRepoUrl(e.target.value)}
                     />
                   </div>
-                  <div>
-                    <Label htmlFor="github-token">GitHub Token (Optional)</Label>
-                    <Input
-                      id="github-token"
-                      type="password"
-                      placeholder="ghp_xxxxxxxxxxxx"
-                      value={githubToken}
-                      onChange={(e) => setGithubToken(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Required for creating pull requests. Get one from{" "}
-                      <a 
-                        href="https://github.com/settings/tokens" 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-blue-500 hover:underline"
-                      >
-                        GitHub Settings
-                      </a>
-                    </p>
-                  </div>
+                  {githubToken ? (
+                    <Alert>
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <AlertDescription>
+                        GitHub token configured. You can view code and create pull requests.
+                      </AlertDescription>
+                    </Alert>
+                  ) : (
+                    <Alert>
+                      <Info className="h-4 w-4" />
+                      <AlertDescription>
+                        Add a GitHub token in your{" "}
+                        <Link href="/profile">
+                          <span className="text-blue-500 hover:underline cursor-pointer">
+                            profile settings
+                          </span>
+                        </Link>
+                        {" "}to enable "View Code" and "Create Fix" features.
+                      </AlertDescription>
+                    </Alert>
+                  )}
                   <Alert>
                     <Info className="h-4 w-4" />
                     <AlertDescription>
