@@ -7,6 +7,7 @@ interface User {
   profileImageUrl?: string;
   firstName?: string;
   lastName?: string;
+  bio?: string;
   avatar?: string;
   subscriptionTier?: string;
   subscriptionStatus?: string;
@@ -40,13 +41,21 @@ export function NeonAuthProvider({ children }: { children: React.ReactNode }) {
       
       if (response.ok) {
         const userData = await response.json();
-        // The endpoint returns the user object directly
+        console.log('[Auth] Received user data:', userData);
+        // Check if we got a user object
         if (userData && userData.id) {
           setUser(userData);
+        } else if (userData.authenticated && userData.user) {
+          // Fallback for wrapped format
+          setUser(userData.user);
         }
+      } else {
+        console.log('[Auth] Response not OK:', response.status);
+        setUser(null);
       }
     } catch (error) {
       console.error('Auth check error:', error);
+      setUser(null);
     } finally {
       setIsLoading(false);
     }

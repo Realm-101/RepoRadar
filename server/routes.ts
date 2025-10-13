@@ -8,7 +8,9 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./neonAuth";
 import { githubService } from "./github";
 import { analyzeRepository, findSimilarRepositories, findSimilarByFunctionality, askAI, generateAIRecommendations } from "./gemini";
-import { insertRepositorySchema, insertAnalysisSchema, insertSavedRepositorySchema } from "@shared/schema";
+import { insertRepositorySchema, insertAnalysisSchema, insertSavedRepositorySchema, repositoryTags } from "@shared/schema";
+import { db } from "./db";
+import { eq, sql } from "drizzle-orm";
 import { 
   stripe, 
   createOrRetrieveStripeCustomer, 
@@ -1414,6 +1416,547 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ received: true, error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
+
+  // ============================================
+  // Bookmark Endpoints (Intelligent Profile Feature)
+  // ============================================
+  
+  // Get user's bookmarks with repository details
+  app.get('/api/bookmarks', 
+    isAuthenticated, 
+    checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
+    asyncHandler(async (req: AuthenticatedRequest, res) => {
+      const userId = req.user.claims.sub;
+      
+      // Get bookmarks from storage
+      const bookmarks = await storage.getUserBookmarks(userId);
+      
+      // Fetch repository details for each bookmark
+      const bookmarksWithRepos = await Promise.all(
+        bookmarks.map(async (bookmark) => {
+          const repository = await storage.getRepository(bookmark.repositoryId);
+          return {
+            ...bookmark,
+            repository,
+          };
+        })
+      );
+      
+      // Track analytics event
+      await trackEvent(req, 'bookmarks_viewed', 'profile', {
+        count: bookmarksWithRepos.length,
+      }).catch(error => console.error('Error tracking bookmarks viewed event:', error));
+      
+      res.json(bookmarksWithRepos);
+    })
+  );
+  
+  // Add a new bookmark
+  app.post('/api/bookmarks',
+    isAuthenticated,
+    checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
+    asyncHandler(async (req: AuthenticatedRequest, res) => {
+      const userId = req.user.claims.sub;
+      const { repositoryId, notes } = req.body;
+      
+      // Validate required fields
+      if (!repositoryId || typeof repositoryId !== 'string') {
+        return res.status(400).json({
+          error: 'VALIDATION_ERROR',
+          message: 'Repository ID is required',
+          field: 'repositoryId',
+        });
+      }
+      
+      // Verify repository exists
+      const repository = await storage.getRepository(repositoryId);
+      if (!repository) {
+        return res.status(404).json({
+          error: 'NOT_FOUND',
+          message: 'Repository not found',
+          resourceType: 'repository',
+          resourceId: repositoryId,
+        });
+      }
+      
+      // Add bookmark
+      const bookmark = await storage.addBookmark(userId, repositoryId, notes);
+      
+      // Track analytics event
+      await trackEvent(req, 'bookmark_added', 'profile', {
+        repositoryId,
+        repositoryName: repository.fullName,
+      }).catch(error => console.error('Error tracking bookmark added event:', error));
+      
+      // Track user activity
+      await storage.trackActivity(userId, 'bookmarked', repositoryId, {
+        repositoryName: repository.fullName,
+      }).catch(error => console.error('Error tracking activity:', error));
+      
+      res.json({
+        ...bookmark,
+        repository,
+      });
+    })
+  );
+  
+  // Remove a bookmark
+  app.delete('/api/bookmarks/:repositoryId',
+    isAuthenticated,
+    checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
+    asyncHandler(async (req: AuthenticatedRequest, res) => {
+      const userId = req.user.claims.sub;
+      const { repositoryId } = req.params;
+      
+      if (!repositoryId) {
+        return res.status(400).json({
+          error: 'VALIDATION_ERROR',
+          message: 'Repository ID is required',
+          field: 'repositoryId',
+        });
+      }
+      
+      // Get repository info before deleting for analytics
+      const repository = await storage.getRepository(repositoryId);
+      
+      // Remove bookmark
+      await storage.removeBookmark(userId, repositoryId);
+      
+      // Track analytics event
+      await trackEvent(req, 'bookmark_removed', 'profile', {
+        repositoryId,
+        repositoryName: repository?.fullName,
+      }).catch(error => console.error('Error tracking bookmark removed event:', error));
+      
+      res.json({ success: true });
+    })
+  );
+
+  // ============================================
+  // Tags API Endpoints
+  // ============================================
+  
+  // Get user's tags with repository counts
+  app.get('/api/tags',
+    isAuthenticated,
+    checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
+    asyncHandler(async (req: AuthenticatedRequest, res) => {
+      const userId = req.user.claims.sub;
+      
+      // Get tags from storage
+      const userTags = await storage.getUserTags(userId);
+      
+      // Get repository counts for each tag
+      const tagsWithCounts = await Promise.all(
+        userTags.map(async (tag) => {
+          const count = await db
+            .select({ count: sql<number>`count(*)` })
+            .from(repositoryTags)
+            .where(eq(repositoryTags.tagId, tag.id))
+            .then(result => result[0]?.count || 0);
+          
+          return {
+            ...tag,
+            repositoryCount: count,
+          };
+        })
+      );
+      
+      // Track analytics event
+      await trackEvent(req, 'tags_viewed', 'profile', {
+        count: tagsWithCounts.length,
+      }).catch(error => console.error('Error tracking tags viewed event:', error));
+      
+      res.json(tagsWithCounts);
+    })
+  );
+  
+  // Create a new tag
+  app.post('/api/tags',
+    isAuthenticated,
+    checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
+    asyncHandler(async (req: AuthenticatedRequest, res) => {
+      const userId = req.user.claims.sub;
+      const { name, color } = req.body;
+      
+      // Validate tag name
+      if (!name || typeof name !== 'string' || name.trim().length === 0) {
+        return res.status(400).json({
+          error: 'VALIDATION_ERROR',
+          message: 'Tag name is required',
+          field: 'name',
+        });
+      }
+      
+      if (name.length > 50) {
+        return res.status(400).json({
+          error: 'VALIDATION_ERROR',
+          message: 'Tag name must be 50 characters or less',
+          field: 'name',
+        });
+      }
+      
+      // Validate color format if provided
+      if (color && !/^#[0-9A-F]{6}$/i.test(color)) {
+        return res.status(400).json({
+          error: 'VALIDATION_ERROR',
+          message: 'Color must be a valid hex color (e.g., #FF6B35)',
+          field: 'color',
+        });
+      }
+      
+      // Check for duplicate tag name for this user
+      const existingTags = await storage.getUserTags(userId);
+      if (existingTags.some(tag => tag.name.toLowerCase() === name.trim().toLowerCase())) {
+        return res.status(400).json({
+          error: 'VALIDATION_ERROR',
+          message: 'A tag with this name already exists',
+          field: 'name',
+        });
+      }
+      
+      // Create tag
+      const tag = await storage.createTag(userId, name.trim(), color);
+      
+      // Track analytics event
+      await trackEvent(req, 'tag_created', 'profile', {
+        tagId: tag.id,
+        tagName: tag.name,
+        tagColor: tag.color,
+      }).catch(error => console.error('Error tracking tag created event:', error));
+      
+      res.json(tag);
+    })
+  );
+  
+  // Delete a tag
+  app.delete('/api/tags/:tagId',
+    isAuthenticated,
+    checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
+    asyncHandler(async (req: AuthenticatedRequest, res) => {
+      const userId = req.user.claims.sub;
+      const tagId = parseInt(req.params.tagId, 10);
+      
+      if (isNaN(tagId)) {
+        return res.status(400).json({
+          error: 'VALIDATION_ERROR',
+          message: 'Invalid tag ID',
+          field: 'tagId',
+        });
+      }
+      
+      // Verify tag exists and belongs to user
+      const userTags = await storage.getUserTags(userId);
+      const tag = userTags.find(t => t.id === tagId);
+      
+      if (!tag) {
+        return res.status(404).json({
+          error: 'NOT_FOUND',
+          message: 'Tag not found',
+          resourceType: 'tag',
+          resourceId: tagId.toString(),
+        });
+      }
+      
+      // Delete tag (cascade deletes repository associations)
+      await storage.deleteTag(userId, tagId);
+      
+      // Track analytics event
+      await trackEvent(req, 'tag_deleted', 'profile', {
+        tagId,
+        tagName: tag.name,
+      }).catch(error => console.error('Error tracking tag deleted event:', error));
+      
+      res.json({ success: true });
+    })
+  );
+  
+  // Apply a tag to a repository
+  app.post('/api/repositories/:id/tags',
+    isAuthenticated,
+    checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
+    asyncHandler(async (req: AuthenticatedRequest, res) => {
+      const userId = req.user.claims.sub;
+      const repositoryId = req.params.id;
+      const { tagId } = req.body;
+      
+      // Validate inputs
+      if (!repositoryId) {
+        return res.status(400).json({
+          error: 'VALIDATION_ERROR',
+          message: 'Repository ID is required',
+          field: 'repositoryId',
+        });
+      }
+      
+      if (!tagId || typeof tagId !== 'number') {
+        return res.status(400).json({
+          error: 'VALIDATION_ERROR',
+          message: 'Tag ID is required and must be a number',
+          field: 'tagId',
+        });
+      }
+      
+      // Verify repository exists
+      const repository = await storage.getRepository(repositoryId);
+      if (!repository) {
+        return res.status(404).json({
+          error: 'NOT_FOUND',
+          message: 'Repository not found',
+          resourceType: 'repository',
+          resourceId: repositoryId,
+        });
+      }
+      
+      // Verify tag exists and belongs to user
+      const userTags = await storage.getUserTags(userId);
+      const tag = userTags.find(t => t.id === tagId);
+      
+      if (!tag) {
+        return res.status(404).json({
+          error: 'NOT_FOUND',
+          message: 'Tag not found or does not belong to you',
+          resourceType: 'tag',
+          resourceId: tagId.toString(),
+        });
+      }
+      
+      // Check if tag is already applied
+      const existingTags = await storage.getRepositoryTags(repositoryId, userId);
+      if (existingTags.some(t => t.id === tagId)) {
+        return res.status(400).json({
+          error: 'VALIDATION_ERROR',
+          message: 'Tag is already applied to this repository',
+        });
+      }
+      
+      // Apply tag
+      const repoTag = await storage.tagRepository(repositoryId, tagId, userId);
+      
+      // Track analytics event
+      await trackEvent(req, 'tag_applied', 'profile', {
+        repositoryId,
+        repositoryName: repository.fullName,
+        tagId,
+        tagName: tag.name,
+      }).catch(error => console.error('Error tracking tag applied event:', error));
+      
+      res.json(repoTag);
+    })
+  );
+  
+  // Remove a tag from a repository
+  app.delete('/api/repositories/:id/tags/:tagId',
+    isAuthenticated,
+    checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
+    asyncHandler(async (req: AuthenticatedRequest, res) => {
+      const userId = req.user.claims.sub;
+      const repositoryId = req.params.id;
+      const tagId = parseInt(req.params.tagId, 10);
+      
+      // Validate inputs
+      if (!repositoryId) {
+        return res.status(400).json({
+          error: 'VALIDATION_ERROR',
+          message: 'Repository ID is required',
+          field: 'repositoryId',
+        });
+      }
+      
+      if (isNaN(tagId)) {
+        return res.status(400).json({
+          error: 'VALIDATION_ERROR',
+          message: 'Invalid tag ID',
+          field: 'tagId',
+        });
+      }
+      
+      // Get repository and tag info for analytics
+      const repository = await storage.getRepository(repositoryId);
+      const userTags = await storage.getUserTags(userId);
+      const tag = userTags.find(t => t.id === tagId);
+      
+      // Remove tag from repository
+      await storage.untagRepository(repositoryId, tagId, userId);
+      
+      // Track analytics event
+      await trackEvent(req, 'tag_removed', 'profile', {
+        repositoryId,
+        repositoryName: repository?.fullName,
+        tagId,
+        tagName: tag?.name,
+      }).catch(error => console.error('Error tracking tag removed event:', error));
+      
+      res.json({ success: true });
+    })
+  );
+
+  // ============================================
+  // User Preferences API Endpoints
+  // ============================================
+  
+  // Get user preferences with defaults
+  app.get('/api/user/preferences',
+    isAuthenticated,
+    checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
+    asyncHandler(async (req: AuthenticatedRequest, res) => {
+      const userId = req.user.claims.sub;
+      
+      // Get preferences (creates defaults if none exist)
+      const preferences = await storage.getUserPreferences(userId);
+      
+      // Track analytics event
+      await trackEvent(req, 'preferences_viewed', 'profile', {
+        hasPreferences: !!preferences,
+      }).catch(error => console.error('Error tracking preferences viewed event:', error));
+      
+      res.json(preferences);
+    })
+  );
+  
+  // Update user preferences
+  app.put('/api/user/preferences',
+    isAuthenticated,
+    checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
+    asyncHandler(async (req: AuthenticatedRequest, res) => {
+      const userId = req.user.claims.sub;
+      const {
+        preferredLanguages,
+        preferredTopics,
+        excludedTopics,
+        minStars,
+        maxAge,
+        aiRecommendations,
+        emailNotifications,
+      } = req.body;
+      
+      // Validate preferredLanguages if provided
+      if (preferredLanguages !== undefined) {
+        if (!Array.isArray(preferredLanguages)) {
+          return res.status(400).json({
+            error: 'VALIDATION_ERROR',
+            message: 'preferredLanguages must be an array',
+            field: 'preferredLanguages',
+          });
+        }
+        
+        if (!preferredLanguages.every(lang => typeof lang === 'string')) {
+          return res.status(400).json({
+            error: 'VALIDATION_ERROR',
+            message: 'All preferred languages must be strings',
+            field: 'preferredLanguages',
+          });
+        }
+      }
+      
+      // Validate preferredTopics if provided
+      if (preferredTopics !== undefined) {
+        if (!Array.isArray(preferredTopics)) {
+          return res.status(400).json({
+            error: 'VALIDATION_ERROR',
+            message: 'preferredTopics must be an array',
+            field: 'preferredTopics',
+          });
+        }
+        
+        if (!preferredTopics.every(topic => typeof topic === 'string')) {
+          return res.status(400).json({
+            error: 'VALIDATION_ERROR',
+            message: 'All preferred topics must be strings',
+            field: 'preferredTopics',
+          });
+        }
+      }
+      
+      // Validate excludedTopics if provided
+      if (excludedTopics !== undefined) {
+        if (!Array.isArray(excludedTopics)) {
+          return res.status(400).json({
+            error: 'VALIDATION_ERROR',
+            message: 'excludedTopics must be an array',
+            field: 'excludedTopics',
+          });
+        }
+        
+        if (!excludedTopics.every(topic => typeof topic === 'string')) {
+          return res.status(400).json({
+            error: 'VALIDATION_ERROR',
+            message: 'All excluded topics must be strings',
+            field: 'excludedTopics',
+          });
+        }
+      }
+      
+      // Validate minStars if provided
+      if (minStars !== undefined) {
+        if (typeof minStars !== 'number' || isNaN(minStars)) {
+          return res.status(400).json({
+            error: 'VALIDATION_ERROR',
+            message: 'minStars must be a number',
+            field: 'minStars',
+          });
+        }
+        
+        if (minStars < 0 || minStars > 1000000) {
+          return res.status(400).json({
+            error: 'VALIDATION_ERROR',
+            message: 'minStars must be between 0 and 1000000',
+            field: 'minStars',
+          });
+        }
+      }
+      
+      // Validate maxAge if provided
+      if (maxAge !== undefined && typeof maxAge !== 'string') {
+        return res.status(400).json({
+          error: 'VALIDATION_ERROR',
+          message: 'maxAge must be a string',
+          field: 'maxAge',
+        });
+      }
+      
+      // Validate aiRecommendations if provided
+      if (aiRecommendations !== undefined && typeof aiRecommendations !== 'boolean') {
+        return res.status(400).json({
+          error: 'VALIDATION_ERROR',
+          message: 'aiRecommendations must be a boolean',
+          field: 'aiRecommendations',
+        });
+      }
+      
+      // Validate emailNotifications if provided
+      if (emailNotifications !== undefined && typeof emailNotifications !== 'boolean') {
+        return res.status(400).json({
+          error: 'VALIDATION_ERROR',
+          message: 'emailNotifications must be a boolean',
+          field: 'emailNotifications',
+        });
+      }
+      
+      // Build update object with only provided fields
+      const updateData: any = {};
+      if (preferredLanguages !== undefined) updateData.preferredLanguages = preferredLanguages;
+      if (preferredTopics !== undefined) updateData.preferredTopics = preferredTopics;
+      if (excludedTopics !== undefined) updateData.excludedTopics = excludedTopics;
+      if (minStars !== undefined) updateData.minStars = minStars;
+      if (maxAge !== undefined) updateData.maxAge = maxAge;
+      if (aiRecommendations !== undefined) updateData.aiRecommendations = aiRecommendations;
+      if (emailNotifications !== undefined) updateData.emailNotifications = emailNotifications;
+      
+      // Update preferences
+      const preferences = await storage.updateUserPreferences(userId, updateData);
+      
+      // Track analytics event
+      await trackEvent(req, 'preferences_updated', 'profile', {
+        updatedFields: Object.keys(updateData),
+        languageCount: preferredLanguages?.length,
+        topicCount: preferredTopics?.length,
+        excludedTopicCount: excludedTopics?.length,
+      }).catch(error => console.error('Error tracking preferences updated event:', error));
+      
+      res.json(preferences);
+    })
+  );
 
   // Repository search and analysis
   app.get('/api/repositories/search', checkTierLimit('api'), validateQuery(searchRepositoriesSchema), asyncHandler(async (req, res) => {

@@ -54,6 +54,8 @@ export default function Profile() {
   // Update local state when user data changes
   useEffect(() => {
     if (user) {
+      console.log('[Profile] User data received:', user);
+      console.log('[Profile] GitHub token from user:', (user as any).githubToken);
       setFirstName(user.firstName || "");
       setLastName(user.lastName || "");
       setBio((user as any).bio || "");
@@ -153,10 +155,14 @@ export default function Profile() {
   // Update profile mutation
   const updateProfileMutation = useMutation({
     mutationFn: async (data: { firstName: string; lastName: string; bio: string; profileImageUrl: string; githubToken?: string }) => {
+      console.log('[Profile] Sending update:', data);
       const response = await apiRequest('PUT', '/api/user/profile', data);
-      return await response.json();
+      const result = await response.json();
+      console.log('[Profile] Update response:', result);
+      return result;
     },
     onSuccess: async (updatedUser) => {
+      console.log('[Profile] Update successful, refetching user...');
       // Refetch user data from the auth context
       await refetchUser();
       
@@ -170,6 +176,7 @@ export default function Profile() {
       });
     },
     onError: (error: any) => {
+      console.error('[Profile] Update error:', error);
       toast({
         title: "Update Failed",
         description: error.message || "Failed to update profile",

@@ -117,42 +117,36 @@ export interface RepositoryAnalysisResult {
   };
 }
 
-interface UserPreferences {
-  preferredLanguages?: string[];
-  preferredTopics?: string[];
-  excludedTopics?: string[];
-  minStars?: number;
-  maxAge?: string;
-}
-
-interface UserActivity {
-  action: string;
-  repositoryId?: string;
-}
-
-interface AIRecommendation {
-  name: string;
-  reason: string;
-  matchScore: number;
-  primaryLanguage: string;
-  topics: string[];
-  stars: number;
-  description: string;
-}
-
-interface AIRecommendationsResult {
-  recommendations: AIRecommendation[];
-  insights: {
-    topInterests: string[];
-    suggestedTopics: string[];
-    recommendationRationale: string;
+export interface Recommendation {
+  repository: {
+    id: string;
+    fullName: string;
+    name: string;
+    owner: string;
+    description: string;
+    language: string;
+    stars: number;
+    forks: number;
+    topics: string[];
+  };
+  matchScore: number; // 0-100
+  reasoning: string;
+  basedOn: {
+    languages: string[];
+    topics: string[];
+    similarTo: string[]; // repository names
   };
 }
 
+/**
+ * Generate AI-powered repository recommendations for a user
+ * Requirements: 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.10, 4.11
+ */
 export async function generateAIRecommendations(
-  preferences: UserPreferences, 
-  recentActivity: UserActivity[]
-): Promise<AIRecommendationsResult> {
+  userId: string,
+  storage: any,
+  githubService: any
+): Promise<Recommendation[]> {
   if (!isGeminiEnabled() || !ai) {
     throw new AppError(
       ErrorCodes.EXTERNAL_API_ERROR.code,
@@ -165,54 +159,205 @@ export async function generateAIRecommendations(
 
   try {
     return await retryHandler.executeWithRetry(async () => {
-      const prompt = `You are an expert GitHub repository recommendation system. Based on the user's preferences and recent activity, generate personalized repository recommendations.
+      // 1. Gather user data (Requirements 4.3, 4.4)
+      const preferences = await storage.getUserPreferences(userId);
+      const recentActivity = await storage.getUserRecentActivity(userId, 100);
+      const bookmarks = await storage.getUserBookmarks(userId);
+      
+      // 2. Extract patterns from user data (Requirement 4.5)
+      const analyzedRepos = recentActivity
+        .filter((a: any) => a.action === 'analyzed')
+        .map((a: any) => a.repositoryId)
+        .filter(Boolean);
+      
+      const bookmarkedRepoIds = bookmarks.map((b: any) => b.repositoryId);
+      
+      // Get details of recently analyzed repositories for context
+      const recentRepoDetails = await Promise.all(
+        analyzedRepos.slice(0, 5).map(async (repoId: string) => {
+          const repo = await storage.getRepository(repoId);
+          return repo ? `${repo.fullName} (${repo.language})` : null;
+        })
+      );
+      const recentRepoNames = recentRepoDetails.filter(Boolean);
+      
+      // Extract preferences with defaults
+      const languages = preferences?.preferredLanguages || [];
+      const topics = preferences?.preferredTopics || [];
+      const excludedTopics = preferences?.excludedTopics || [];
+      const minStars = preferences?.minStars || 0;
+      
+      // 3. Search GitHub for candidate repositories (Requirement 4.6)
+      const searchQueries: string[] = [];
+      
+      // Build search queries based on preferences
+      if (languages.length > 0) {
+        // Search for each language separately to get diverse results
+        for (const lang of languages.slice(0, 3)) { // Limit to top 3 languages
+          searchQueries.push(`language:${lang} stars:>=${minStars}`);
+        }
+      }
+      
+      if (topics.length > 0) {
+        // Search for each topic
+        for (const topic of topics.slice(0, 3)) { // Limit to top 3 topics
+          searchQueries.push(`topic:${topic} stars:>=${minStars}`);
+        }
+      }
+      
+      // If no preferences, use a general quality search
+      if (searchQueries.length === 0) {
+        searchQueries.push(`stars:>=${Math.max(minStars, 100)}`);
+      }
+      
+      // Execute searches and collect candidates
+      const candidateRepos: any[] = [];
+      const seenRepoIds = new Set<string>();
+      
+      for (const query of searchQueries) {
+        try {
+          const results = await githubService.searchRepositories(query, 'stars', 10);
+          for (const repo of results) {
+            const repoId = repo.full_name;
+            if (!seenRepoIds.has(repoId)) {
+              seenRepoIds.add(repoId);
+              candidateRepos.push(repo);
+            }
+          }
+        } catch (error) {
+          console.error(`Error searching GitHub with query "${query}":`, error);
+          // Continue with other queries even if one fails
+        }
+      }
+      
+      // 4. Filter out already analyzed and bookmarked repositories (Requirement 4.7)
+      const filtered = candidateRepos.filter(repo => {
+        const repoId = repo.full_name;
+        const isAnalyzed = analyzedRepos.includes(repoId);
+        const isBookmarked = bookmarkedRepoIds.includes(repoId);
+        
+        // Check if any excluded topics match
+        const hasExcludedTopic = excludedTopics.some(excluded => 
+          repo.topics?.some((topic: string) => 
+            topic.toLowerCase().includes(excluded.toLowerCase())
+          )
+        );
+        
+        return !isAnalyzed && !isBookmarked && !hasExcludedTopic;
+      });
+      
+      // If we don't have enough candidates, return empty array
+      if (filtered.length === 0) {
+        return [];
+      }
+      
+      // 5. Use AI to score and rank repositories (Requirement 4.8, 4.9, 4.10, 4.11)
+      const prompt = `You are an expert GitHub repository recommendation system. Analyze these candidate repositories and rank them for a user with the following profile:
 
-User Preferences:
-- Preferred Languages: ${preferences?.preferredLanguages?.join(', ') || 'Any'}
-- Preferred Topics: ${preferences?.preferredTopics?.join(', ') || 'Any'}
-- Excluded Topics: ${preferences?.excludedTopics?.join(', ') || 'None'}
-- Minimum Stars: ${preferences?.minStars || 0}
-- Max Repository Age: ${preferences?.maxAge || 'Any'}
+User Profile:
+- Preferred Languages: ${languages.join(', ') || 'Any'}
+- Preferred Topics: ${topics.join(', ') || 'Any'}
+- Excluded Topics: ${excludedTopics.join(', ') || 'None'}
+- Recently Analyzed: ${recentRepoNames.join(', ') || 'None yet'}
+- Minimum Stars Preference: ${minStars}
 
-Recent Activity (last 20 actions):
-${recentActivity.map(a => `- ${a.action} ${a.repositoryId ? `repository ${a.repositoryId}` : ''}`).join('\n')}
+Candidate Repositories:
+${filtered.slice(0, 30).map((repo, idx) => `
+${idx + 1}. ${repo.full_name}
+   Description: ${repo.description || 'No description'}
+   Language: ${repo.language || 'Unknown'}
+   Stars: ${repo.stargazers_count}
+   Topics: ${repo.topics?.join(', ') || 'None'}
+`).join('\n')}
 
-Based on this profile, recommend 10 GitHub repositories that would be most relevant and useful for this user. Focus on:
-1. Repositories matching their language preferences
-2. Topics they're interested in but avoiding excluded topics
-3. Quality repositories with appropriate star counts
-4. Active, well-maintained projects
+Task: Rank these repositories by relevance to this user. For each repository, provide:
+1. A match score (0-100) based on how well it fits the user's interests
+2. Clear reasoning explaining why this repository is recommended
+3. What aspects of their profile it matches
 
-Return a JSON object with this structure:
+Consider:
+- Language match (high weight if user has language preferences)
+- Topic relevance (high weight if user has topic preferences)
+- Quality indicators (stars, activity, documentation)
+- Similarity to recently analyzed repositories
+- Potential usefulness and learning value
+
+Return ONLY the top 10 repositories as a JSON array with this exact structure:
 {
   "recommendations": [
     {
-      "name": "owner/repo",
-      "reason": "Why this repository is recommended for this user",
-      "matchScore": 0.0-1.0,
-      "primaryLanguage": "language",
-      "topics": ["topic1", "topic2"],
-      "stars": 1000,
-      "description": "Brief description"
+      "repositoryFullName": "owner/repo",
+      "matchScore": 85,
+      "reasoning": "Detailed explanation of why this is recommended",
+      "matchedLanguages": ["language1"],
+      "matchedTopics": ["topic1", "topic2"],
+      "similarToAnalyzed": ["repo1", "repo2"]
     }
-  ],
-  "insights": {
-    "topInterests": ["interest1", "interest2"],
-    "suggestedTopics": ["new topic to explore"],
-    "recommendationRationale": "Overall explanation of recommendations"
-  }
+  ]
 }`;
 
       const response = await ai!.models.generateContent({
         model: "gemini-2.5-pro",
         config: {
           responseMimeType: "application/json",
+          responseSchema: {
+            type: "object",
+            properties: {
+              recommendations: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    repositoryFullName: { type: "string" },
+                    matchScore: { type: "number" },
+                    reasoning: { type: "string" },
+                    matchedLanguages: { type: "array", items: { type: "string" } },
+                    matchedTopics: { type: "array", items: { type: "string" } },
+                    similarToAnalyzed: { type: "array", items: { type: "string" } }
+                  },
+                  required: ["repositoryFullName", "matchScore", "reasoning"]
+                }
+              }
+            },
+            required: ["recommendations"]
+          }
         },
-        contents: prompt,
+        contents: prompt
       });
 
-      const result = response.text;
-      return result ? JSON.parse(result) : { recommendations: [], insights: {} };
+      const aiResult = JSON.parse(response.text || '{"recommendations":[]}');
+      const rankedRecommendations = aiResult.recommendations || [];
+      
+      // 6. Combine AI rankings with repository data and return top 10 (Requirement 4.11)
+      const recommendations: Recommendation[] = [];
+      
+      for (const rec of rankedRecommendations.slice(0, 10)) {
+        const repo = filtered.find(r => r.full_name === rec.repositoryFullName);
+        if (repo) {
+          recommendations.push({
+            repository: {
+              id: repo.full_name,
+              fullName: repo.full_name,
+              name: repo.name,
+              owner: repo.owner.login,
+              description: repo.description || '',
+              language: repo.language || 'Unknown',
+              stars: repo.stargazers_count,
+              forks: repo.forks_count,
+              topics: repo.topics || []
+            },
+            matchScore: Math.min(100, Math.max(0, rec.matchScore)),
+            reasoning: rec.reasoning,
+            basedOn: {
+              languages: rec.matchedLanguages || languages,
+              topics: rec.matchedTopics || topics,
+              similarTo: rec.similarToAnalyzed || []
+            }
+          });
+        }
+      }
+      
+      return recommendations;
     }, {
       maxAttempts: 3,
       backoff: 'exponential',

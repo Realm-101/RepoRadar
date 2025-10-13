@@ -164,7 +164,10 @@ export interface IStorage {
   // Tags operations
   getUserTags(userId: string): Promise<Tag[]>;
   createTag(userId: string, name: string, color?: string): Promise<Tag>;
+  deleteTag(userId: string, tagId: number): Promise<void>;
   tagRepository(repositoryId: string, tagId: number, userId: string): Promise<RepositoryTag>;
+  untagRepository(repositoryId: string, tagId: number, userId: string): Promise<void>;
+  getRepositoryTags(repositoryId: string, userId: string): Promise<Tag[]>;
   
   // Collections operations
   getUserCollections(userId: string): Promise<Collection[]>;
@@ -868,12 +871,56 @@ export class DatabaseStorage implements IStorage {
     return tag;
   }
 
+  async deleteTag(userId: string, tagId: number): Promise<void> {
+    // First delete all repository tag associations
+    await db
+      .delete(repositoryTags)
+      .where(and(eq(repositoryTags.tagId, tagId), eq(repositoryTags.userId, userId)));
+    
+    // Then delete the tag itself
+    await db
+      .delete(tags)
+      .where(and(eq(tags.id, tagId), eq(tags.userId, userId)));
+  }
+
   async tagRepository(repositoryId: string, tagId: number, userId: string): Promise<RepositoryTag> {
     const [repoTag] = await db
       .insert(repositoryTags)
       .values({ repositoryId, tagId, userId })
       .returning();
     return repoTag;
+  }
+
+  async untagRepository(repositoryId: string, tagId: number, userId: string): Promise<void> {
+    await db
+      .delete(repositoryTags)
+      .where(
+        and(
+          eq(repositoryTags.repositoryId, repositoryId),
+          eq(repositoryTags.tagId, tagId),
+          eq(repositoryTags.userId, userId)
+        )
+      );
+  }
+
+  async getRepositoryTags(repositoryId: string, userId: string): Promise<Tag[]> {
+    const result = await db
+      .select({
+        id: tags.id,
+        userId: tags.userId,
+        name: tags.name,
+        color: tags.color,
+        createdAt: tags.createdAt,
+      })
+      .from(repositoryTags)
+      .innerJoin(tags, eq(repositoryTags.tagId, tags.id))
+      .where(
+        and(
+          eq(repositoryTags.repositoryId, repositoryId),
+          eq(repositoryTags.userId, userId)
+        )
+      );
+    return result;
   }
 
   // Collections operations (implementation moved below)

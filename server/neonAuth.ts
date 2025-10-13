@@ -96,6 +96,7 @@ export async function setupAuth(app: express.Express) {
               lastName: dbUser.lastName,
               profileImageUrl: dbUser.profileImageUrl,
               bio: dbUser.bio,
+              githubToken: dbUser.githubToken,
               subscriptionTier: dbUser.subscriptionTier,
               subscriptionStatus: dbUser.subscriptionStatus,
               createdAt: dbUser.createdAt,
