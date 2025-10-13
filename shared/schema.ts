@@ -689,6 +689,46 @@ export const languageAnalytics = pgTable("language_analytics", {
 export type LanguageAnalytics = typeof languageAnalytics.$inferSelect;
 export type InsertLanguageAnalytics = typeof languageAnalytics.$inferInsert;
 
+// Code reviews table for storing code review results
+export const codeReviews = pgTable("code_reviews", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: varchar("type", { length: 20 }).notNull(), // 'repository' or 'snippet'
+  content: text("content").notNull(), // Repository URL or code snippet
+  repositoryName: varchar("repository_name"),
+  repositoryUrl: varchar("repository_url"),
+  overallScore: integer("overall_score").notNull(),
+  codeQuality: integer("code_quality").notNull(),
+  security: integer("security").notNull(),
+  performance: integer("performance").notNull(),
+  maintainability: integer("maintainability").notNull(),
+  testCoverage: integer("test_coverage").notNull(),
+  issues: jsonb("issues").notNull().$type<any[]>(),
+  suggestions: jsonb("suggestions").notNull().$type<string[]>(),
+  positives: jsonb("positives").notNull().$type<string[]>(),
+  metrics: jsonb("metrics").notNull().$type<{
+    linesOfCode: number;
+    complexity: number;
+    duplications: number;
+    technicalDebt: string;
+  }>(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_code_reviews_user").on(table.userId),
+  index("idx_code_reviews_type").on(table.type),
+  index("idx_code_reviews_created").on(table.createdAt),
+]);
+
+export type CodeReview = typeof codeReviews.$inferSelect;
+export type InsertCodeReview = typeof codeReviews.$inferInsert;
+
+export const codeReviewsRelations = relations(codeReviews, ({ one }) => ({
+  user: one(users, {
+    fields: [codeReviews.userId],
+    references: [users.id],
+  }),
+}));
+
 export type Repository = typeof repositories.$inferSelect;
 export type InsertRepository = z.infer<typeof insertRepositorySchema>;
 export type RepositoryAnalysis = typeof repositoryAnalyses.$inferSelect;

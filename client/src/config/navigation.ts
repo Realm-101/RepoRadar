@@ -1,4 +1,4 @@
-import { Home, Compass, BarChart3, BookOpen, Search, Layers, GitCompare, Rocket, FolderOpen, TrendingUp, Users, Code, Plug, Bot, User, Bookmark, Tag, HelpCircle, FileText } from 'lucide-react';
+import { Home, Compass, BarChart3, BookOpen, Search, Layers, GitCompare, Rocket, FolderOpen, TrendingUp, Users, Code, Plug, Bot, User, Bookmark, Tag, HelpCircle, FileText, Shield } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export interface NavigationItem {
@@ -17,6 +17,12 @@ export const navigationConfig: NavigationItem[] = [
     path: '/home',
     icon: Home,
     requiresAuth: true,
+  },
+  {
+    label: 'Code Review',
+    path: '/code-review',
+    icon: Shield,
+    requiresAuth: false,
   },
   {
     label: 'Discover',

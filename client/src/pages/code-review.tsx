@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
+import { Header } from "@/components/layout/Header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,12 +12,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
 import { Link } from "wouter";
 import { 
   Code, FileCode, GitBranch, AlertTriangle, CheckCircle, 
   XCircle, Info, Lightbulb, Shield, Zap, Clock, 
-  TrendingUp, Bug, Lock, Sparkles, FileText, Search, ExternalLink, Loader2
+  Bug, Sparkles, FileText, ExternalLink, Loader2,
+  Download, History, Trash2, FileDown
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -32,6 +33,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface CodeIssue {
   type: 'error' | 'warning' | 'suggestion' | 'security';
@@ -62,13 +69,39 @@ interface ReviewResult {
   };
 }
 
+interface SavedReview {
+  id: string;
+  type: string;
+  content: string;
+  repositoryName?: string;
+  repositoryUrl?: string;
+  overallScore: number;
+  codeQuality: number;
+  security: number;
+  performance: number;
+  maintainability: number;
+  testCoverage: number;
+  issues: CodeIssue[];
+  suggestions: string[];
+  positives: string[];
+  metrics: {
+    linesOfCode: number;
+    complexity: number;
+    duplications: number;
+    technicalDebt: string;
+  };
+  createdAt: string;
+}
+
 export default function CodeReview() {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const [repoUrl, setRepoUrl] = useState("");
   const [codeSnippet, setCodeSnippet] = useState("");
   const [reviewResult, setReviewResult] = useState<ReviewResult | null>(null);
   const [activeTab, setActiveTab] = useState("repository");
+  const [currentReviewId, setCurrentReviewId] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const [viewCodeDialog, setViewCodeDialog] = useState<{
     open: boolean;
     content?: string;
@@ -79,6 +112,12 @@ export default function CodeReview() {
   
   // Get GitHub token from user profile
   const githubToken = (user as any)?.githubToken || "";
+
+  // Fetch review history
+  const { data: reviewHistory, refetch: refetchHistory } = useQuery<SavedReview[]>({
+    queryKey: ['/api/code-review/history'],
+    enabled: isAuthenticated && showHistory,
+  });
 
   const reviewMutation = useMutation({
     mutationFn: async (data: { type: string; content: string; githubToken?: string }) => {
@@ -97,6 +136,7 @@ export default function CodeReview() {
     },
     onSuccess: (data) => {
       setReviewResult(data);
+      setCurrentReviewId(null); // Reset review ID for new review
       toast({ 
         title: "Code review completed", 
         description: `Found ${data.issues.length} issues to address` 
@@ -110,6 +150,75 @@ export default function CodeReview() {
         variant: "destructive" 
       });
     },
+  });
+
+  const saveReviewMutation = useMutation({
+    mutationFn: async () => {
+      if (!reviewResult) throw new Error('No review to save');
+      
+      const parsed = repoUrl ? githubService.parseRepositoryUrl(repoUrl) : null;
+      
+      const response = await fetch('/api/code-review/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: activeTab,
+          content: activeTab === 'repository' ? repoUrl : codeSnippet,
+          repositoryName: parsed?.repo,
+          repositoryUrl: repoUrl || undefined,
+          result: reviewResult,
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to save review');
+      }
+      
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      setCurrentReviewId(data.id);
+      refetchHistory();
+      toast({
+        title: "Review saved",
+        description: "Code review has been saved to your history"
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Save failed",
+        description: "Unable to save code review",
+        variant: "destructive"
+      });
+    }
+  });
+
+  const deleteReviewMutation = useMutation({
+    mutationFn: async (reviewId: string) => {
+      const response = await fetch(`/api/code-review/${reviewId}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete review');
+      }
+      
+      return await response.json();
+    },
+    onSuccess: () => {
+      refetchHistory();
+      toast({
+        title: "Review deleted",
+        description: "Code review has been removed from your history"
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Delete failed",
+        description: "Unable to delete code review",
+        variant: "destructive"
+      });
+    }
   });
 
   const viewCodeMutation = useMutation({
@@ -213,6 +322,239 @@ export default function CodeReview() {
     }
   };
 
+  const loadReview = (review: SavedReview) => {
+    setReviewResult({
+      overallScore: review.overallScore,
+      codeQuality: review.codeQuality,
+      security: review.security,
+      performance: review.performance,
+      maintainability: review.maintainability,
+      testCoverage: review.testCoverage,
+      issues: review.issues,
+      suggestions: review.suggestions,
+      positives: review.positives,
+      metrics: review.metrics,
+    });
+    setCurrentReviewId(review.id);
+    setActiveTab(review.type);
+    if (review.type === 'repository' && review.repositoryUrl) {
+      setRepoUrl(review.repositoryUrl);
+    } else if (review.type === 'snippet') {
+      setCodeSnippet(review.content);
+    }
+    setShowHistory(false);
+    toast({
+      title: "Review loaded",
+      description: "Previous code review has been loaded"
+    });
+  };
+
+  const exportToPDF = async () => {
+    if (!reviewResult) return;
+    
+    const { jsPDF } = await import('jspdf');
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const margin = 15;
+    let yPosition = margin;
+
+    // Title
+    pdf.setFontSize(20);
+    pdf.setTextColor(99, 102, 241);
+    pdf.text('Code Review Report', pageWidth / 2, yPosition, { align: 'center' });
+    yPosition += 15;
+
+    // Repository/Snippet info
+    pdf.setFontSize(12);
+    pdf.setTextColor(0, 0, 0);
+    if (activeTab === 'repository' && repoUrl) {
+      const parsed = githubService.parseRepositoryUrl(repoUrl);
+      pdf.text(`Repository: ${parsed?.owner}/${parsed?.repo}`, margin, yPosition);
+    } else {
+      pdf.text('Code Snippet Review', margin, yPosition);
+    }
+    yPosition += 10;
+
+    // Date
+    pdf.setFontSize(10);
+    pdf.setTextColor(100, 100, 100);
+    pdf.text(`Review Date: ${new Date().toLocaleDateString()}`, margin, yPosition);
+    yPosition += 15;
+
+    // Scores
+    pdf.setFontSize(14);
+    pdf.setTextColor(0, 0, 0);
+    pdf.text('Scores', margin, yPosition);
+    yPosition += 10;
+
+    const scores = [
+      { name: 'Overall', value: reviewResult.overallScore },
+      { name: 'Code Quality', value: reviewResult.codeQuality },
+      { name: 'Security', value: reviewResult.security },
+      { name: 'Performance', value: reviewResult.performance },
+      { name: 'Maintainability', value: reviewResult.maintainability },
+      { name: 'Test Coverage', value: reviewResult.testCoverage },
+    ];
+
+    pdf.setFontSize(10);
+    scores.forEach(score => {
+      pdf.setTextColor(0, 0, 0);
+      pdf.text(score.name, margin, yPosition);
+      
+      const color = score.value >= 80 ? [34, 197, 94] : score.value >= 60 ? [251, 191, 36] : [239, 68, 68];
+      pdf.setFillColor(color[0], color[1], color[2]);
+      pdf.rect(margin + 40, yPosition - 4, (score.value / 100) * 40, 6, 'F');
+      pdf.text(`${score.value}/100`, margin + 85, yPosition);
+      yPosition += 8;
+    });
+    yPosition += 10;
+
+    // Issues
+    if (reviewResult.issues.length > 0) {
+      pdf.setFontSize(14);
+      pdf.text(`Issues (${reviewResult.issues.length})`, margin, yPosition);
+      yPosition += 8;
+
+      pdf.setFontSize(9);
+      reviewResult.issues.slice(0, 10).forEach(issue => {
+        if (yPosition > 270) {
+          pdf.addPage();
+          yPosition = margin;
+        }
+        pdf.setTextColor(0, 0, 0);
+        const lines = pdf.splitTextToSize(`• ${issue.message}`, pageWidth - margin * 2);
+        pdf.text(lines, margin + 2, yPosition);
+        yPosition += lines.length * 5 + 2;
+      });
+      yPosition += 5;
+    }
+
+    // Suggestions
+    if (reviewResult.suggestions.length > 0) {
+      if (yPosition > 250) {
+        pdf.addPage();
+        yPosition = margin;
+      }
+      pdf.setFontSize(14);
+      pdf.text('Suggestions', margin, yPosition);
+      yPosition += 8;
+
+      pdf.setFontSize(9);
+      reviewResult.suggestions.forEach(suggestion => {
+        if (yPosition > 270) {
+          pdf.addPage();
+          yPosition = margin;
+        }
+        const lines = pdf.splitTextToSize(`• ${suggestion}`, pageWidth - margin * 2);
+        pdf.text(lines, margin + 2, yPosition);
+        yPosition += lines.length * 5 + 2;
+      });
+    }
+
+    const fileName = activeTab === 'repository' && repoUrl
+      ? `code_review_${githubService.parseRepositoryUrl(repoUrl)?.repo}_${new Date().toISOString().split('T')[0]}.pdf`
+      : `code_review_${new Date().toISOString().split('T')[0]}.pdf`;
+    
+    pdf.save(fileName);
+    
+    toast({
+      title: "Export successful",
+      description: "Code review exported as PDF"
+    });
+  };
+
+  const exportToMarkdown = () => {
+    if (!reviewResult) return;
+
+    let markdown = '# Code Review Report\n\n';
+    
+    if (activeTab === 'repository' && repoUrl) {
+      const parsed = githubService.parseRepositoryUrl(repoUrl);
+      markdown += `**Repository:** ${parsed?.owner}/${parsed?.repo}\n`;
+      markdown += `**URL:** ${repoUrl}\n\n`;
+    } else {
+      markdown += '**Type:** Code Snippet\n\n';
+    }
+
+    markdown += `**Review Date:** ${new Date().toLocaleDateString()}\n\n`;
+
+    markdown += '## Scores\n\n';
+    markdown += `- Overall: ${reviewResult.overallScore}/100\n`;
+    markdown += `- Code Quality: ${reviewResult.codeQuality}/100\n`;
+    markdown += `- Security: ${reviewResult.security}/100\n`;
+    markdown += `- Performance: ${reviewResult.performance}/100\n`;
+    markdown += `- Maintainability: ${reviewResult.maintainability}/100\n`;
+    markdown += `- Test Coverage: ${reviewResult.testCoverage}%\n\n`;
+
+    if (reviewResult.issues.length > 0) {
+      markdown += `## Issues (${reviewResult.issues.length})\n\n`;
+      reviewResult.issues.forEach((issue, idx) => {
+        markdown += `### ${idx + 1}. ${issue.message}\n\n`;
+        markdown += `- **Type:** ${issue.type}\n`;
+        markdown += `- **Severity:** ${issue.severity}\n`;
+        markdown += `- **File:** ${issue.file}:${issue.line}:${issue.column}\n`;
+        markdown += `- **Category:** ${issue.category}\n`;
+        if (issue.suggestion) {
+          markdown += `- **Suggestion:** ${issue.suggestion}\n`;
+        }
+        markdown += '\n';
+      });
+    }
+
+    if (reviewResult.suggestions.length > 0) {
+      markdown += '## Suggestions\n\n';
+      reviewResult.suggestions.forEach(suggestion => {
+        markdown += `- ${suggestion}\n`;
+      });
+      markdown += '\n';
+    }
+
+    if (reviewResult.positives.length > 0) {
+      markdown += '## Positives\n\n';
+      reviewResult.positives.forEach(positive => {
+        markdown += `- ${positive}\n`;
+      });
+      markdown += '\n';
+    }
+
+    markdown += '## Metrics\n\n';
+    markdown += `- Lines of Code: ${reviewResult.metrics.linesOfCode}\n`;
+    markdown += `- Complexity: ${reviewResult.metrics.complexity}\n`;
+    markdown += `- Duplications: ${reviewResult.metrics.duplications}\n`;
+    markdown += `- Technical Debt: ${reviewResult.metrics.technicalDebt}\n`;
+
+    const blob = new Blob([markdown], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    
+    const fileName = activeTab === 'repository' && repoUrl
+      ? `code_review_${githubService.parseRepositoryUrl(repoUrl)?.repo}_${new Date().toISOString().split('T')[0]}.md`
+      : `code_review_${new Date().toISOString().split('T')[0]}.md`;
+    
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Export successful",
+      description: "Code review exported as Markdown"
+    });
+  };
+
+  // Helper to parse GitHub URLs
+  const githubService = {
+    parseRepositoryUrl: (url: string) => {
+      const match = url.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+      if (match) {
+        return { owner: match[1], repo: match[2].replace(/\.git$/, '') };
+      }
+      return null;
+    }
+  };
+
   const handleViewCode = (issue: CodeIssue) => {
     if (!repoUrl) {
       toast({
@@ -281,15 +623,125 @@ export default function CodeReview() {
   };
 
   return (
-    <div className="container mx-auto p-6 pt-32 max-w-7xl">
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
-          AI-Powered Code Review
-        </h1>
-        <p className="text-muted-foreground">
-          Get comprehensive code analysis with AI-driven insights and recommendations
-        </p>
-      </div>
+    <>
+      <Header />
+      <div className="container mx-auto p-6 max-w-7xl pt-24">
+        <div className="mb-8 flex justify-between items-start">
+          <div>
+            <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
+              AI-Powered Code Review
+            </h1>
+            <p className="text-muted-foreground">
+              Get comprehensive code analysis with AI-driven insights and recommendations
+            </p>
+          </div>
+          <div className="flex gap-2">
+            {isAuthenticated && (
+              <Button
+                variant="outline"
+                onClick={() => setShowHistory(!showHistory)}
+              >
+                <History className="h-4 w-4 mr-2" />
+                {showHistory ? 'Hide' : 'Show'} History
+              </Button>
+            )}
+            {reviewResult && (
+              <>
+                {isAuthenticated && !currentReviewId && (
+                  <Button
+                    variant="outline"
+                    onClick={() => saveReviewMutation.mutate()}
+                    disabled={saveReviewMutation.isPending}
+                  >
+                    {saveReviewMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <FileDown className="h-4 w-4 mr-2" />
+                    )}
+                    Save Review
+                  </Button>
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline">
+                      <Download className="h-4 w-4 mr-2" />
+                      Export
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={exportToPDF}>
+                      <FileText className="h-4 w-4 mr-2" />
+                      Export as PDF
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={exportToMarkdown}>
+                      <FileCode className="h-4 w-4 mr-2" />
+                      Export as Markdown
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            )}
+          </div>
+        </div>
+
+      {showHistory && isAuthenticated && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Review History</CardTitle>
+            <CardDescription>
+              Your past code reviews
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[400px]">
+              {reviewHistory && reviewHistory.length > 0 ? (
+                <div className="space-y-3">
+                  {reviewHistory.map((review) => (
+                    <Card key={review.id} className="p-4 hover:bg-accent cursor-pointer transition-colors">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1" onClick={() => loadReview(review)}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Badge variant={review.type === 'repository' ? 'default' : 'secondary'}>
+                              {review.type}
+                            </Badge>
+                            <span className="text-sm text-muted-foreground">
+                              {new Date(review.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <p className="font-medium mb-1">
+                            {review.repositoryName || 'Code Snippet'}
+                          </p>
+                          <div className="flex items-center gap-4 text-sm">
+                            <span>Score: {review.overallScore}/100</span>
+                            <span>{review.issues.length} issues</span>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteReviewMutation.mutate(review.id);
+                          }}
+                          disabled={deleteReviewMutation.isPending}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <History className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p>No saved reviews yet</p>
+                  <p className="text-sm">Complete a review and save it to see it here</p>
+                </div>
+              )}
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-1">
@@ -319,19 +771,19 @@ export default function CodeReview() {
                     />
                   </div>
                   {githubToken ? (
-                    <Alert>
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                      <AlertDescription>
-                        GitHub token configured. You can view code and create pull requests.
+                    <Alert className="border-green-200 bg-green-50">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <AlertDescription className="text-green-800">
+                        <span className="font-medium">✓ GitHub token added</span> — "View Code" and "Create Fix" features are enabled.
                       </AlertDescription>
                     </Alert>
                   ) : (
-                    <Alert>
-                      <Info className="h-4 w-4" />
-                      <AlertDescription>
-                        Add a GitHub token in your{" "}
+                    <Alert className="border-amber-200 bg-amber-50">
+                      <Info className="h-4 w-4 text-amber-600" />
+                      <AlertDescription className="text-amber-900">
+                        <span className="font-medium">GitHub token not configured.</span> Add one in your{" "}
                         <Link href="/profile">
-                          <span className="text-blue-500 hover:underline cursor-pointer">
+                          <span className="text-amber-900 font-semibold hover:underline cursor-pointer">
                             profile settings
                           </span>
                         </Link>
@@ -687,6 +1139,7 @@ export default function CodeReview() {
           </ScrollArea>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </>
   );
 }

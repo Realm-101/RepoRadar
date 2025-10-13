@@ -13,21 +13,40 @@ import { ContentTransition } from "@/components/content-transition";
 
 interface RecentAnalysis {
   id: string;
-  repository: {
-    id: string;
-    name: string;
-    full_name: string;
-    description?: string;
-    language?: string;
-    stargazers_count?: number;
-    forks_count?: number;
-  };
+  repositoryId: string;
+  repositoryName: string;
+  repositoryOwner: string;
+  primaryLanguage?: string;
   originality: number;
   completeness: number;
   marketability: number;
   monetization: number;
   usefulness: number;
   overallScore: number;
+  createdAt: Date;
+  repository: {
+    id: string;
+    name: string;
+    fullName: string;
+    owner: string;
+    description: string | null;
+    language: string | null;
+    stars: number | null;
+    forks: number | null;
+    watchers: number | null;
+    size: number | null;
+    isPrivate: boolean | null;
+    htmlUrl: string;
+    cloneUrl: string;
+    languages: any;
+    topics: string[] | null;
+    lastAnalyzed: Date | null;
+    analysisCount: number | null;
+    lastReanalyzedBy: string | null;
+    reanalysisLockedUntil: Date | null;
+    createdAt: Date | null;
+    updatedAt: Date | null;
+  };
 }
 
 export default function Home() {
@@ -109,7 +128,12 @@ export default function Home() {
                       <RepositoryCard
                         key={analysis.id}
                         repository={analysis.repository}
-                        analysis={analysis}
+                        analysis={{
+                          overallScore: analysis.overallScore,
+                          originality: analysis.originality,
+                          completeness: analysis.completeness,
+                          marketability: analysis.marketability,
+                        }}
                       />
                     ))}
                   </div>

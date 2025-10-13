@@ -25,6 +25,7 @@ import {
   apiKeys,
   apiUsage,
   webhooks,
+  codeReviews,
   type User,
   type UpsertUser,
   type Repository,
@@ -74,6 +75,8 @@ import {
   type InsertApiUsage,
   type Webhook,
   type InsertWebhook,
+  type CodeReview,
+  type InsertCodeReview,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -644,20 +647,7 @@ export class DatabaseStorage implements IStorage {
     return result.count;
   }
 
-  async getUserAnalyses(userId: string): Promise<Array<{
-    id: string;
-    repositoryId: string;
-    repositoryName: string;
-    repositoryOwner: string;
-    originality: number;
-    completeness: number;
-    marketability: number;
-    monetization: number;
-    usefulness: number;
-    overallScore: number;
-    primaryLanguage?: string;
-    createdAt: Date;
-  }>> {
+  async getUserAnalyses(userId: string): Promise<Array<any>> {
     try {
       console.log(`[Storage] Fetching analyses for userId: ${userId}`);
       
@@ -676,6 +666,7 @@ export class DatabaseStorage implements IStorage {
           usefulness: repositoryAnalyses.usefulness,
           overallScore: repositoryAnalyses.overallScore,
           createdAt: repositoryAnalyses.createdAt,
+          repository: repositories,
         })
         .from(repositoryAnalyses)
         .innerJoin(repositories, eq(repositoryAnalyses.repositoryId, repositories.id))
@@ -1636,6 +1627,46 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(webhooks.id, webhookId),
         eq(webhooks.userId, userId)
+      ));
+  }
+
+  // Code Review operations
+  async createCodeReview(review: InsertCodeReview): Promise<CodeReview> {
+    const [newReview] = await db
+      .insert(codeReviews)
+      .values(review)
+      .returning();
+    
+    return newReview;
+  }
+
+  async getUserCodeReviews(userId: string, limit: number = 50): Promise<CodeReview[]> {
+    return await db
+      .select()
+      .from(codeReviews)
+      .where(eq(codeReviews.userId, userId))
+      .orderBy(desc(codeReviews.createdAt))
+      .limit(limit);
+  }
+
+  async getCodeReview(reviewId: string, userId: string): Promise<CodeReview | undefined> {
+    const [review] = await db
+      .select()
+      .from(codeReviews)
+      .where(and(
+        eq(codeReviews.id, reviewId),
+        eq(codeReviews.userId, userId)
+      ));
+    
+    return review;
+  }
+
+  async deleteCodeReview(reviewId: string, userId: string): Promise<void> {
+    await db
+      .delete(codeReviews)
+      .where(and(
+        eq(codeReviews.id, reviewId),
+        eq(codeReviews.userId, userId)
       ));
   }
 }

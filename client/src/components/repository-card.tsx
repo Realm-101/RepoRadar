@@ -7,7 +7,7 @@ import { getScoreHealthIndicator, getMetricHealthIndicator } from "@/utils/healt
 
 interface RepositoryCardProps {
   repository: Repository;
-  analysis?: RepositoryAnalysis;
+  analysis?: Pick<RepositoryAnalysis, 'overallScore' | 'originality' | 'completeness' | 'marketability'>;
   showAnalysis?: boolean;
 }
 

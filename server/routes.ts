@@ -2408,6 +2408,68 @@ Please review the changes carefully before merging.`;
     });
   }));
 
+  // Save code review
+  app.post('/api/code-review/save', isAuthenticated, asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user.claims.sub;
+    const { type, content, repositoryName, repositoryUrl, result } = req.body;
+    
+    if (!result) {
+      return res.status(400).json({ message: "Review result is required" });
+    }
+    
+    const review = await storage.createCodeReview({
+      userId,
+      type,
+      content,
+      repositoryName,
+      repositoryUrl,
+      overallScore: result.overallScore,
+      codeQuality: result.codeQuality,
+      security: result.security,
+      performance: result.performance,
+      maintainability: result.maintainability,
+      testCoverage: result.testCoverage,
+      issues: result.issues,
+      suggestions: result.suggestions,
+      positives: result.positives,
+      metrics: result.metrics,
+    });
+    
+    res.json(review);
+  }));
+
+  // Get user's code reviews
+  app.get('/api/code-review/history', isAuthenticated, asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user.claims.sub;
+    const limit = parseInt(req.query.limit as string) || 50;
+    
+    const reviews = await storage.getUserCodeReviews(userId, limit);
+    res.json(reviews);
+  }));
+
+  // Get specific code review
+  app.get('/api/code-review/:id', isAuthenticated, asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user.claims.sub;
+    const reviewId = req.params.id;
+    
+    const review = await storage.getCodeReview(reviewId, userId);
+    
+    if (!review) {
+      return res.status(404).json({ message: "Code review not found" });
+    }
+    
+    res.json(review);
+  }));
+
+  // Delete code review
+  app.delete('/api/code-review/:id', isAuthenticated, asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user.claims.sub;
+    const reviewId = req.params.id;
+    
+    await storage.deleteCodeReview(reviewId, userId);
+    res.json({ success: true });
+  }));
+
   // Recent analyses (all - public)
   app.get('/api/analyses/recent', analysisPagination, async (req: Request & { pagination: { limit: number; offset: number } }, res: Response & { paginate: (data: unknown[], total: number) => unknown }) => {
     try {

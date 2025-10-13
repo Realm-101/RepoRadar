@@ -11,6 +11,7 @@ interface User {
   subscriptionTier?: string;
   subscriptionStatus?: string;
   createdAt?: string;
+  githubToken?: string;
 }
 
 interface NeonAuthContextType {
@@ -39,8 +40,9 @@ export function NeonAuthProvider({ children }: { children: React.ReactNode }) {
       
       if (response.ok) {
         const userData = await response.json();
-        if (userData.authenticated && userData.user) {
-          setUser(userData.user);
+        // The endpoint returns the user object directly
+        if (userData && userData.id) {
+          setUser(userData);
         }
       }
     } catch (error) {
