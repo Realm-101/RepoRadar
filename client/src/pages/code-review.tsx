@@ -843,49 +843,76 @@ export default function CodeReview() {
             <Card className="mt-6">
               <CardHeader>
                 <CardTitle>Review Metrics</CardTitle>
+                <CardDescription>
+                  Comprehensive quality assessment
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
                   <div className="flex justify-between mb-1">
-                    <span className="text-sm">Overall Score</span>
+                    <span className="text-sm font-medium">Overall Score</span>
                     <span className="font-bold">{reviewResult.overallScore}/100</span>
                   </div>
-                  <Progress value={reviewResult.overallScore} />
+                  <Progress value={reviewResult.overallScore} className="mb-1" />
+                  <p className="text-xs text-muted-foreground">
+                    {reviewResult.overallScore >= 80 ? '✓ Excellent - Production ready' :
+                     reviewResult.overallScore >= 60 ? '⚠ Good - Minor improvements needed' :
+                     reviewResult.overallScore >= 40 ? '⚠ Fair - Several issues to address' :
+                     '✗ Poor - Major refactoring recommended'}
+                  </p>
                 </div>
                 <div>
                   <div className="flex justify-between mb-1">
-                    <span className="text-sm">Code Quality</span>
+                    <span className="text-sm font-medium">Code Quality</span>
                     <span className="font-bold">{reviewResult.codeQuality}/100</span>
                   </div>
-                  <Progress value={reviewResult.codeQuality} />
+                  <Progress value={reviewResult.codeQuality} className="mb-1" />
+                  <p className="text-xs text-muted-foreground">
+                    Readability, structure, and best practices
+                  </p>
                 </div>
                 <div>
                   <div className="flex justify-between mb-1">
-                    <span className="text-sm">Security</span>
+                    <span className="text-sm font-medium">Security</span>
                     <span className="font-bold">{reviewResult.security}/100</span>
                   </div>
-                  <Progress value={reviewResult.security} />
+                  <Progress value={reviewResult.security} className="mb-1" />
+                  <p className="text-xs text-muted-foreground">
+                    Vulnerabilities and security best practices
+                  </p>
                 </div>
                 <div>
                   <div className="flex justify-between mb-1">
-                    <span className="text-sm">Performance</span>
+                    <span className="text-sm font-medium">Performance</span>
                     <span className="font-bold">{reviewResult.performance}/100</span>
                   </div>
-                  <Progress value={reviewResult.performance} />
+                  <Progress value={reviewResult.performance} className="mb-1" />
+                  <p className="text-xs text-muted-foreground">
+                    Efficiency and optimization opportunities
+                  </p>
                 </div>
                 <div>
                   <div className="flex justify-between mb-1">
-                    <span className="text-sm">Maintainability</span>
+                    <span className="text-sm font-medium">Maintainability</span>
                     <span className="font-bold">{reviewResult.maintainability}/100</span>
                   </div>
-                  <Progress value={reviewResult.maintainability} />
+                  <Progress value={reviewResult.maintainability} className="mb-1" />
+                  <p className="text-xs text-muted-foreground">
+                    Ease of future changes and updates
+                  </p>
                 </div>
                 <div>
                   <div className="flex justify-between mb-1">
-                    <span className="text-sm">Test Coverage</span>
+                    <span className="text-sm font-medium">Test Coverage</span>
                     <span className="font-bold">{reviewResult.testCoverage}%</span>
                   </div>
-                  <Progress value={reviewResult.testCoverage} />
+                  <Progress value={reviewResult.testCoverage} className="mb-1" />
+                  <p className="text-xs text-muted-foreground">
+                    {reviewResult.testCoverage >= 80 ? 'Excellent coverage' :
+                     reviewResult.testCoverage >= 60 ? 'Good coverage' :
+                     reviewResult.testCoverage >= 40 ? 'Needs more tests' :
+                     'Critical - Add tests'}
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -1036,36 +1063,64 @@ export default function CodeReview() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
+                    <div className="grid gap-6 md:grid-cols-2">
+                      <div className="space-y-2 p-4 border rounded-lg">
                         <div className="flex items-center gap-2">
                           <FileText className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm font-medium">Lines of Code</span>
+                          <span className="text-sm font-medium">Total Lines of Code</span>
                         </div>
-                        <p className="text-2xl font-bold">
+                        <p className="text-3xl font-bold">
                           {reviewResult.metrics.linesOfCode.toLocaleString()}
                         </p>
+                        <p className="text-xs text-muted-foreground">
+                          Total lines across all analyzed files
+                        </p>
                       </div>
-                      <div className="space-y-2">
+                      <div className="space-y-2 p-4 border rounded-lg">
                         <div className="flex items-center gap-2">
                           <Zap className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm font-medium">Complexity</span>
+                          <span className="text-sm font-medium">Cyclomatic Complexity</span>
                         </div>
-                        <p className="text-2xl font-bold">{reviewResult.metrics.complexity}</p>
+                        <p className="text-3xl font-bold">
+                          {reviewResult.metrics.complexity}
+                          <span className="text-sm font-normal text-muted-foreground ml-2">
+                            {reviewResult.metrics.complexity <= 10 ? '(Simple)' :
+                             reviewResult.metrics.complexity <= 20 ? '(Moderate)' :
+                             reviewResult.metrics.complexity <= 50 ? '(Complex)' :
+                             '(Very Complex)'}
+                          </span>
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Average complexity per function. Lower is better.
+                        </p>
                       </div>
-                      <div className="space-y-2">
+                      <div className="space-y-2 p-4 border rounded-lg">
                         <div className="flex items-center gap-2">
                           <Bug className="h-4 w-4 text-muted-foreground" />
                           <span className="text-sm font-medium">Code Duplications</span>
                         </div>
-                        <p className="text-2xl font-bold">{reviewResult.metrics.duplications}</p>
+                        <p className="text-3xl font-bold">
+                          {reviewResult.metrics.duplications}
+                          <span className="text-sm font-normal text-muted-foreground ml-2">
+                            {reviewResult.metrics.duplications === 0 ? '(None)' :
+                             reviewResult.metrics.duplications <= 5 ? '(Low)' :
+                             reviewResult.metrics.duplications <= 15 ? '(Moderate)' :
+                             '(High)'}
+                          </span>
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Number of duplicated code blocks found
+                        </p>
                       </div>
-                      <div className="space-y-2">
+                      <div className="space-y-2 p-4 border rounded-lg">
                         <div className="flex items-center gap-2">
                           <Clock className="h-4 w-4 text-muted-foreground" />
                           <span className="text-sm font-medium">Technical Debt</span>
                         </div>
-                        <p className="text-2xl font-bold">{reviewResult.metrics.technicalDebt}</p>
+                        <p className="text-3xl font-bold">{reviewResult.metrics.technicalDebt}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Estimated time to fix all issues
+                        </p>
                       </div>
                     </div>
                   </CardContent>

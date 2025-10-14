@@ -2938,12 +2938,27 @@ Provide your analysis in the following JSON format:
   "suggestions": ["<suggestion 1>", "<suggestion 2>", ...],
   "positives": ["<positive 1>", "<positive 2>", ...],
   "metrics": {
-    "linesOfCode": <number>,
-    "complexity": <number>,
-    "duplications": <number>,
-    "technicalDebt": "<estimate>"
+    "linesOfCode": <total lines across all files analyzed>,
+    "complexity": <average cyclomatic complexity (1-100, where 1-10 is simple, 11-20 is moderate, 21-50 is complex, 51+ is very complex)>,
+    "duplications": <number of duplicated code blocks found>,
+    "technicalDebt": "<estimated time in minutes to fix all issues, format as '15m' or '2h 30m'>"
   }
 }
+
+IMPORTANT METRICS GUIDELINES:
+- linesOfCode: Count actual code lines (not comments or blank lines) across all analyzed files
+- complexity: Calculate average cyclomatic complexity per function. Use realistic values based on code structure:
+  * Simple code with few branches: 5-10
+  * Moderate code with some conditionals: 11-20
+  * Complex code with many branches: 21-50
+  * Very complex code: 51+
+- duplications: Count actual repeated code blocks (not just similar patterns)
+- technicalDebt: Estimate realistically based on issue severity:
+  * Critical issues: 30-60 minutes each
+  * High severity: 15-30 minutes each
+  * Medium severity: 5-15 minutes each
+  * Low severity: 2-5 minutes each
+  Format as "45m" for minutes or "2h 15m" for hours and minutes
 
 Focus on:
 1. Security vulnerabilities
@@ -3015,9 +3030,23 @@ Provide ONLY the JSON response, no additional text.`;
         };
       }
       
+      // Validate and fix file paths in issues
+      if (analysis.issues && Array.isArray(analysis.issues)) {
+        const validFilePaths = fileContents.map(f => f.path);
+        analysis.issues = analysis.issues.map((issue: any) => {
+          // If the file path doesn't match any analyzed file, use the first file
+          if (!validFilePaths.includes(issue.file)) {
+            console.log('[Code Review] Invalid file path in issue:', issue.file, 'Using:', validFilePaths[0]);
+            issue.file = validFilePaths[0];
+          }
+          return issue;
+        });
+      }
+      
       console.log('[Code Review] Analysis complete:', {
         overallScore: analysis.overallScore,
-        issuesCount: analysis.issues?.length || 0
+        issuesCount: analysis.issues?.length || 0,
+        files: fileContents.map(f => f.path)
       });
       
       res.json(analysis);
@@ -3055,12 +3084,27 @@ Provide your analysis in this JSON format:
   "suggestions": ["<suggestion 1>", ...],
   "positives": ["<positive 1>", ...],
   "metrics": {
-    "linesOfCode": <number>,
-    "complexity": <number>,
-    "duplications": <number>,
-    "technicalDebt": "<estimate>"
+    "linesOfCode": <total lines of actual code (not comments or blank lines)>,
+    "complexity": <average cyclomatic complexity (1-100, where 1-10 is simple, 11-20 is moderate, 21-50 is complex, 51+ is very complex)>,
+    "duplications": <number of duplicated code blocks found>,
+    "technicalDebt": "<estimated time to fix all issues, format as '15m' or '2h 30m'>"
   }
 }
+
+IMPORTANT METRICS GUIDELINES:
+- linesOfCode: Count actual code lines (not comments or blank lines)
+- complexity: Calculate average cyclomatic complexity per function. Use realistic values:
+  * Simple code with few branches: 5-10
+  * Moderate code with some conditionals: 11-20
+  * Complex code with many branches: 21-50
+  * Very complex code: 51+
+- duplications: Count actual repeated code blocks
+- technicalDebt: Estimate realistically based on issue severity:
+  * Critical: 30-60 min each
+  * High: 15-30 min each
+  * Medium: 5-15 min each
+  * Low: 2-5 min each
+  Format as "45m" for minutes or "2h 15m" for hours and minutes
 
 Provide ONLY the JSON response.`;
 
