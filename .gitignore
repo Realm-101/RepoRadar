@@ -1,9 +1,36 @@
+# Dependencies
 node_modules
+
+# Build outputs
 dist
-.DS_Store
 server/public
-vite.config.ts.*
-*.tar.gz
+
+# Environment
 .env
+.env.local
+
+# OS files
+.DS_Store
 desktop.ini
 Thumbs.db
+
+# IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea
+
+# Local state
+.local/
+.superdesign/
+
+# Reports
+lighthouse-reports/
+
+# Temporary files
+*.tar.gz
+*.log
+vite.config.ts.*
+
+# Test coverage
+coverage/
