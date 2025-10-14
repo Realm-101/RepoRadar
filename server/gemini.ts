@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { AppError, ErrorCodes } from '@shared/errors';
 import { retryHandler } from './utils/retryHandler';
+import { queueGeminiRequest, geminiQueue } from './utils/geminiQueue';
 
 const GEMINI_ENABLED = !!process.env.GEMINI_API_KEY;
 
@@ -640,13 +641,15 @@ RESPONSE STYLE:
 - Be encouraging and supportive
 - Keep responses concise but complete`;
 
-      const response = await ai!.models.generateContent({
-        model: "gemini-2.5-pro",
-        config: {
-          systemInstruction: systemPrompt,
-        },
-        contents: question,
-      });
+      const response = await queueGeminiRequest(() => 
+        ai!.models.generateContent({
+          model: "gemini-2.5-pro",
+          config: {
+            systemInstruction: systemPrompt,
+          },
+          contents: question,
+        })
+      );
 
       return response.text || "I apologize, but I couldn't generate a response. Please try again.";
     }, {
@@ -738,72 +741,74 @@ Topics: ${repo.topics.join(', ')}
 ${repo.readme ? `README Preview: ${repo.readme.substring(0, 2000)}...` : 'No README available'}
 `;
 
-      const response = await ai!.models.generateContent({
-        model: "gemini-2.5-pro",
-        config: {
-          systemInstruction: systemPrompt,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: "object",
-            properties: {
-              originality: { type: "number" },
-              completeness: { type: "number" },
-              marketability: { type: "number" },
-              monetization: { type: "number" },
-              usefulness: { type: "number" },
-              overallScore: { type: "number" },
-              summary: { type: "string" },
-              strengths: { 
-                type: "array", 
-                items: { 
-                  type: "object",
-                  properties: {
-                    point: { type: "string" },
-                    reason: { type: "string" }
-                  },
-                  required: ["point", "reason"]
-                } 
-              },
-              weaknesses: { 
-                type: "array", 
-                items: { 
-                  type: "object",
-                  properties: {
-                    point: { type: "string" },
-                    reason: { type: "string" }
-                  },
-                  required: ["point", "reason"]
-                } 
-              },
-              recommendations: { 
-                type: "array", 
-                items: { 
-                  type: "object",
-                  properties: {
-                    suggestion: { type: "string" },
-                    reason: { type: "string" },
-                    impact: { type: "string" }
-                  },
-                  required: ["suggestion", "reason", "impact"]
-                } 
-              },
-              scoreExplanations: {
-                type: "object",
-                properties: {
-                  originality: { type: "string" },
-                  completeness: { type: "string" },
-                  marketability: { type: "string" },
-                  monetization: { type: "string" },
-                  usefulness: { type: "string" }
+      const response = await queueGeminiRequest(() =>
+        ai!.models.generateContent({
+          model: "gemini-2.5-pro",
+          config: {
+            systemInstruction: systemPrompt,
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "object",
+              properties: {
+                originality: { type: "number" },
+                completeness: { type: "number" },
+                marketability: { type: "number" },
+                monetization: { type: "number" },
+                usefulness: { type: "number" },
+                overallScore: { type: "number" },
+                summary: { type: "string" },
+                strengths: { 
+                  type: "array", 
+                  items: { 
+                    type: "object",
+                    properties: {
+                      point: { type: "string" },
+                      reason: { type: "string" }
+                    },
+                    required: ["point", "reason"]
+                  } 
                 },
-                required: ["originality", "completeness", "marketability", "monetization", "usefulness"]
-              }
-            },
-            required: ["originality", "completeness", "marketability", "monetization", "usefulness", "overallScore", "summary", "strengths", "weaknesses", "recommendations", "scoreExplanations"]
-          }
-        },
-        contents: repoInfo
-      });
+                weaknesses: { 
+                  type: "array", 
+                  items: { 
+                    type: "object",
+                    properties: {
+                      point: { type: "string" },
+                      reason: { type: "string" }
+                    },
+                    required: ["point", "reason"]
+                  } 
+                },
+                recommendations: { 
+                  type: "array", 
+                  items: { 
+                    type: "object",
+                    properties: {
+                      suggestion: { type: "string" },
+                      reason: { type: "string" },
+                      impact: { type: "string" }
+                    },
+                    required: ["suggestion", "reason", "impact"]
+                  } 
+                },
+                scoreExplanations: {
+                  type: "object",
+                  properties: {
+                    originality: { type: "string" },
+                    completeness: { type: "string" },
+                    marketability: { type: "string" },
+                    monetization: { type: "string" },
+                    usefulness: { type: "string" }
+                  },
+                  required: ["originality", "completeness", "marketability", "monetization", "usefulness"]
+                }
+              },
+              required: ["originality", "completeness", "marketability", "monetization", "usefulness", "overallScore", "summary", "strengths", "weaknesses", "recommendations", "scoreExplanations"]
+            }
+          },
+          contents: repoInfo
+        })
+      );
 
       const result = JSON.parse(response.text || '{}');
       

@@ -31,6 +31,7 @@ import {
   checkFeatureAccess,
   checkTierLimit,
 } from "./middleware/subscriptionTier";
+import { geminiRateLimiter } from "./middleware/geminiRateLimiter";
 import { 
   validateBody, 
   validateQuery, 
@@ -668,7 +669,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }));
 
   // AI Assistant endpoint
-  app.post('/api/ai/ask', async (req, res) => {
+  app.post('/api/ai/ask', isAuthenticated, geminiRateLimiter(), async (req, res) => {
     try {
       const { question } = req.body;
       
@@ -681,6 +682,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("AI Assistant error:", error);
       res.status(500).json({ error: "Failed to get AI response" });
+    }
+  });
+
+  // Gemini Queue Status endpoint (for debugging)
+  app.get('/api/ai/queue-status', isAuthenticated, async (req, res) => {
+    try {
+      const { geminiQueue } = await import('./utils/geminiQueue');
+      const status = geminiQueue.getStatus();
+      res.json(status);
+    } catch (error) {
+      console.error("Queue status error:", error);
+      res.status(500).json({ error: "Failed to get queue status" });
     }
   });
 
@@ -2053,7 +2066,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/recommendations',
     isAuthenticated,
     checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
-    apiRateLimit, // Rate limiting for expensive AI operations
+    geminiRateLimiter(), // Gemini-specific rate limiting
+    apiRateLimit, // General API rate limiting
     asyncHandler(async (req: AuthenticatedRequest, res) => {
       const userId = req.user.claims.sub;
       
@@ -2277,7 +2291,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(repositories);
   }));
 
-  app.post('/api/repositories/analyze', isAuthenticated, checkTierLimit('analysis'), validateBody(analyzeRepositorySchema), asyncHandler(async (req, res) => {
+  app.post('/api/repositories/analyze', isAuthenticated, geminiRateLimiter(), checkTierLimit('analysis'), validateBody(analyzeRepositorySchema), asyncHandler(async (req, res) => {
     const { url } = req.body;
     
     if (!url) {
@@ -2599,7 +2613,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Find similar repositories by functionality
-  app.post('/api/repositories/find-similar', async (req, res) => {
+  app.post('/api/repositories/find-similar', isAuthenticated, geminiRateLimiter(), async (req, res) => {
     try {
       const { 
         repositoryId, 
@@ -2774,7 +2788,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Code Review endpoints
-  app.post('/api/code-review/analyze', asyncHandler(async (req, res) => {
+  app.post('/api/code-review/analyze', 
+    isAuthenticated,
+    geminiRateLimiter(),
+    asyncHandler(async (req, res) => {
     const { type, content, githubToken } = req.body;
     
     console.log('[Code Review] Analyze request:', { type, content: content?.substring(0, 50), hasToken: !!githubToken });
