@@ -22,10 +22,18 @@ vi.mock('@/lib/queryClient', () => ({
   apiRequest: vi.fn(),
 }));
 
-const createWrapper = () => {
+const createWrapper = (mockData?: any) => {
   const queryClient = new QueryClient({
     defaultOptions: {
-      queries: { retry: false },
+      queries: { 
+        retry: false,
+        queryFn: async () => {
+          if (mockData instanceof Error) {
+            throw mockData;
+          }
+          return mockData || [];
+        },
+      },
       mutations: { retry: false },
     },
   });
@@ -48,10 +56,7 @@ describe('BookmarksTab', () => {
   });
 
   it('renders empty state when no bookmarks', async () => {
-    const { apiRequest } = await import('@/lib/queryClient');
-    vi.mocked(apiRequest).mockResolvedValue([]);
-
-    render(<BookmarksTab />, { wrapper: createWrapper() });
+    render(<BookmarksTab />, { wrapper: createWrapper([]) });
 
     await waitFor(() => {
       expect(screen.getByText('No bookmarks yet')).toBeInTheDocument();
@@ -81,10 +86,7 @@ describe('BookmarksTab', () => {
       },
     ];
 
-    const { apiRequest } = await import('@/lib/queryClient');
-    vi.mocked(apiRequest).mockResolvedValue(mockBookmarks);
-
-    render(<BookmarksTab />, { wrapper: createWrapper() });
+    render(<BookmarksTab />, { wrapper: createWrapper(mockBookmarks) });
 
     await waitFor(() => {
       expect(screen.getByText('awesome-repo')).toBeInTheDocument();
@@ -125,10 +127,7 @@ describe('BookmarksTab', () => {
       },
     ];
 
-    const { apiRequest } = await import('@/lib/queryClient');
-    vi.mocked(apiRequest).mockResolvedValue(mockBookmarks);
-
-    render(<BookmarksTab />, { wrapper: createWrapper() });
+    render(<BookmarksTab />, { wrapper: createWrapper(mockBookmarks) });
 
     await waitFor(() => {
       expect(screen.getByText('2 Bookmarks')).toBeInTheDocument();
@@ -149,10 +148,7 @@ describe('BookmarksTab', () => {
       },
     }));
 
-    const { apiRequest } = await import('@/lib/queryClient');
-    vi.mocked(apiRequest).mockResolvedValue(mockBookmarks);
-
-    render(<BookmarksTab />, { wrapper: createWrapper() });
+    render(<BookmarksTab />, { wrapper: createWrapper(mockBookmarks) });
 
     await waitFor(() => {
       expect(screen.getByText('Page 1 of 3')).toBeInTheDocument();
@@ -178,9 +174,9 @@ describe('BookmarksTab', () => {
     ];
 
     const { apiRequest } = await import('@/lib/queryClient');
-    vi.mocked(apiRequest).mockResolvedValue(mockBookmarks);
-
-    render(<BookmarksTab />, { wrapper: createWrapper() });
+    vi.mocked(apiRequest).mockResolvedValue({} as any);
+    
+    render(<BookmarksTab />, { wrapper: createWrapper(mockBookmarks) });
 
     await waitFor(() => {
       expect(screen.getByText('awesome-repo')).toBeInTheDocument();
@@ -197,10 +193,7 @@ describe('BookmarksTab', () => {
   });
 
   it('renders error state with retry button', async () => {
-    const { apiRequest } = await import('@/lib/queryClient');
-    vi.mocked(apiRequest).mockRejectedValue(new Error('Network error'));
-
-    render(<BookmarksTab />, { wrapper: createWrapper() });
+    render(<BookmarksTab />, { wrapper: createWrapper(new Error('Network error')) });
 
     await waitFor(() => {
       expect(screen.getByText('Failed to load bookmarks')).toBeInTheDocument();

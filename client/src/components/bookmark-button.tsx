@@ -27,11 +27,12 @@ export function BookmarkButton({
   const isPremiumUser = user?.subscriptionTier === 'pro' || user?.subscriptionTier === 'enterprise';
 
   // Fetch bookmarks to check if this repository is bookmarked
-  const { data: bookmarks = [] } = useQuery<any[]>({
+  const { data: bookmarksResponse } = useQuery<{ data: any[] }>({
     queryKey: ["/api/bookmarks"],
     enabled: isAuthenticated && isPremiumUser,
   });
 
+  const bookmarks = bookmarksResponse?.data || [];
   const isBookmarked = bookmarks.some((b: any) => b.repositoryId === repositoryId) || isOptimistic;
 
   // Toggle bookmark mutation
@@ -58,12 +59,16 @@ export function BookmarkButton({
       const previousBookmarks = queryClient.getQueryData(["/api/bookmarks"]);
       
       // Optimistically update cache
-      queryClient.setQueryData(["/api/bookmarks"], (old: any[] = []) => {
-        if (isBookmarked) {
-          return old.filter((b: any) => b.repositoryId !== repositoryId);
-        } else {
-          return [...old, { repositoryId, createdAt: new Date() }];
-        }
+      queryClient.setQueryData(["/api/bookmarks"], (old: any) => {
+        const oldData = old?.data || [];
+        const newData = isBookmarked
+          ? oldData.filter((b: any) => b.repositoryId !== repositoryId)
+          : [...oldData, { repositoryId, createdAt: new Date() }];
+        
+        return {
+          data: newData,
+          pagination: old?.pagination || { page: 1, limit: 20, total: newData.length, totalPages: 1, hasMore: false }
+        };
       });
       
       return { previousBookmarks };

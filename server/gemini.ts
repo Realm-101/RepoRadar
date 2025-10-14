@@ -230,20 +230,36 @@ export async function generateAIRecommendations(
         }
       }
       
-      // 4. Filter out already analyzed and bookmarked repositories (Requirement 4.7)
+      // Get dismissed recommendations from Redis
+      let dismissedRepoIds: Set<string> = new Set();
+      try {
+        const { redisManager } = await import('./redis');
+        if (redisManager.isRedisEnabled() && redisManager.isConnected()) {
+          const redisClient = await redisManager.getClient();
+          const dismissedKey = `dismissed_recommendations:${userId}`;
+          const dismissed = await redisClient.sMembers(dismissedKey);
+          dismissedRepoIds = new Set(dismissed);
+        }
+      } catch (error) {
+        console.error('[Recommendations] Error fetching dismissed recommendations:', error);
+        // Continue without dismissed filter
+      }
+      
+      // 4. Filter out already analyzed, bookmarked, and dismissed repositories (Requirement 4.7)
       const filtered = candidateRepos.filter(repo => {
         const repoId = repo.full_name;
         const isAnalyzed = analyzedRepos.includes(repoId);
         const isBookmarked = bookmarkedRepoIds.includes(repoId);
+        const isDismissed = dismissedRepoIds.has(repoId);
         
         // Check if any excluded topics match
-        const hasExcludedTopic = excludedTopics.some(excluded => 
+        const hasExcludedTopic = excludedTopics.some((excluded: string) => 
           repo.topics?.some((topic: string) => 
             topic.toLowerCase().includes(excluded.toLowerCase())
           )
         );
         
-        return !isAnalyzed && !isBookmarked && !hasExcludedTopic;
+        return !isAnalyzed && !isBookmarked && !isDismissed && !hasExcludedTopic;
       });
       
       // If we don't have enough candidates, return empty array

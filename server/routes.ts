@@ -1421,6 +1421,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Bookmark Endpoints (Intelligent Profile Feature)
   // ============================================
   
+  // Apply intelligent profile performance monitoring middleware
+  const { intelligentProfilePerformanceMiddleware } = await import('./middleware/intelligentProfileAnalytics');
+  app.use('/api/bookmarks', intelligentProfilePerformanceMiddleware);
+  app.use('/api/tags', intelligentProfilePerformanceMiddleware);
+  app.use('/api/user/preferences', intelligentProfilePerformanceMiddleware);
+  app.use('/api/recommendations', intelligentProfilePerformanceMiddleware);
+  
   // Get user's bookmarks with repository details
   app.get('/api/bookmarks', 
     isAuthenticated, 
@@ -2098,7 +2105,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Generate AI recommendations
       try {
         console.log(`[Recommendations] Generating recommendations for user ${userId}`);
+        const generationStartTime = Date.now();
         const recommendations = await generateAIRecommendations(userId, storage, githubService);
+        const generationDuration = Date.now() - generationStartTime;
         
         const response = {
           recommendations,
@@ -2118,10 +2127,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Continue without caching
         }
         
+        // Track recommendation generation performance
+        const { trackRecommendationPerformance } = await import('./middleware/intelligentProfileAnalytics');
+        await trackRecommendationPerformance(userId, generationDuration, recommendations.length, 'ai');
+        
         // Track analytics event
         await trackEvent(req, 'recommendations_generated', 'profile', {
           count: recommendations.length,
           source: 'ai',
+          duration: generationDuration,
         }).catch(error => console.error('Error tracking recommendations generated event:', error));
         
         res.json(response);
@@ -2140,6 +2154,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
           retryable: true,
         });
       }
+    })
+  );
+
+  // Dismiss a recommendation
+  // This removes a specific repository from the user's recommendation list
+  app.post('/api/recommendations/dismiss',
+    isAuthenticated,
+    checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
+    asyncHandler(async (req: AuthenticatedRequest, res) => {
+      const userId = req.user.claims.sub;
+      const { repositoryId } = req.body;
+      
+      // Validate input
+      if (!repositoryId || typeof repositoryId !== 'string') {
+        return res.status(400).json({
+          error: 'VALIDATION_ERROR',
+          message: 'Repository ID is required',
+          field: 'repositoryId',
+        });
+      }
+      
+      // Get repository info for analytics
+      const repository = await storage.getRepository(repositoryId);
+      
+      // Store dismissed recommendation in Redis or database
+      // This prevents it from appearing in future recommendations
+      try {
+        const { redisManager } = await import('./redis');
+        if (redisManager.isRedisEnabled() && redisManager.isConnected()) {
+          const redisClient = await redisManager.getClient();
+          const dismissedKey = `dismissed_recommendations:${userId}`;
+          
+          // Add to set of dismissed repositories (expires after 90 days)
+          await redisClient.sAdd(dismissedKey, repositoryId);
+          await redisClient.expire(dismissedKey, 90 * 24 * 60 * 60); // 90 days
+          
+          console.log(`[Recommendations] Dismissed repository ${repositoryId} for user ${userId}`);
+        }
+      } catch (error) {
+        console.error('[Recommendations] Error storing dismissed recommendation:', error);
+        // Continue even if storage fails
+      }
+      
+      // Track analytics event
+      await trackEvent(req, 'recommendation_dismissed', 'profile', {
+        repositoryId,
+        repositoryName: repository?.fullName,
+      }).catch(error => console.error('Error tracking recommendation dismissed event:', error));
+      
+      res.json({ 
+        success: true,
+        message: 'Recommendation dismissed successfully',
+      });
     })
   );
 
