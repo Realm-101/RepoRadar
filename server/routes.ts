@@ -1428,8 +1428,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     asyncHandler(async (req: AuthenticatedRequest, res) => {
       const userId = req.user.claims.sub;
       
-      // Get bookmarks from storage
-      const bookmarks = await storage.getUserBookmarks(userId);
+      // Parse pagination parameters
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 100); // Max 100 per page
+      const offset = (page - 1) * limit;
+      
+      // Get total count for pagination metadata
+      const totalCount = await storage.getUserBookmarksCount(userId);
+      
+      // Get paginated bookmarks from storage
+      const bookmarks = await storage.getUserBookmarksPaginated(userId, limit, offset);
       
       // Fetch repository details for each bookmark
       const bookmarksWithRepos = await Promise.all(
@@ -1445,9 +1453,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Track analytics event
       await trackEvent(req, 'bookmarks_viewed', 'profile', {
         count: bookmarksWithRepos.length,
+        page,
+        limit,
       }).catch(error => console.error('Error tracking bookmarks viewed event:', error));
       
-      res.json(bookmarksWithRepos);
+      // Return paginated response
+      res.json({
+        data: bookmarksWithRepos,
+        pagination: {
+          page,
+          limit,
+          total: totalCount,
+          totalPages: Math.ceil(totalCount / limit),
+          hasMore: offset + bookmarks.length < totalCount,
+        },
+      });
     })
   );
   
@@ -1543,31 +1563,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     asyncHandler(async (req: AuthenticatedRequest, res) => {
       const userId = req.user.claims.sub;
       
-      // Get tags from storage
-      const userTags = await storage.getUserTags(userId);
+      // Parse pagination parameters
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = Math.min(parseInt(req.query.limit as string) || 100, 200); // Max 200 per page for tags
+      const offset = (page - 1) * limit;
       
-      // Get repository counts for each tag
-      const tagsWithCounts = await Promise.all(
-        userTags.map(async (tag) => {
-          const count = await db
-            .select({ count: sql<number>`count(*)` })
-            .from(repositoryTags)
-            .where(eq(repositoryTags.tagId, tag.id))
-            .then(result => result[0]?.count || 0);
-          
-          return {
-            ...tag,
-            repositoryCount: count,
-          };
+      // Get total count for pagination metadata
+      const totalCount = await storage.getUserTagsCount(userId);
+      
+      // Get paginated tags from storage
+      const userTags = await storage.getUserTagsPaginated(userId, limit, offset);
+      
+      // Get repository counts for each tag (optimized with single query)
+      const tagIds = userTags.map(tag => tag.id);
+      const counts = tagIds.length > 0 ? await db
+        .select({
+          tagId: repositoryTags.tagId,
+          count: sql<number>`count(*)`,
         })
-      );
+        .from(repositoryTags)
+        .where(sql`${repositoryTags.tagId} = ANY(${tagIds})`)
+        .groupBy(repositoryTags.tagId) : [];
+      
+      const countMap = new Map(counts.map(c => [c.tagId, c.count]));
+      
+      const tagsWithCounts = userTags.map(tag => ({
+        ...tag,
+        repositoryCount: countMap.get(tag.id) || 0,
+      }));
       
       // Track analytics event
       await trackEvent(req, 'tags_viewed', 'profile', {
         count: tagsWithCounts.length,
+        page,
+        limit,
       }).catch(error => console.error('Error tracking tags viewed event:', error));
       
-      res.json(tagsWithCounts);
+      // Return paginated response
+      res.json({
+        data: tagsWithCounts,
+        pagination: {
+          page,
+          limit,
+          total: totalCount,
+          totalPages: Math.ceil(totalCount / limit),
+          hasMore: offset + userTags.length < totalCount,
+        },
+      });
     })
   );
   
@@ -1742,6 +1784,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }).catch(error => console.error('Error tracking tag applied event:', error));
       
       res.json(repoTag);
+    })
+  );
+  
+  // Get tags for a specific repository
+  app.get('/api/repositories/:id/tags',
+    isAuthenticated,
+    checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
+    asyncHandler(async (req: AuthenticatedRequest, res) => {
+      const userId = req.user.claims.sub;
+      const repositoryId = req.params.id;
+      
+      // Validate inputs
+      if (!repositoryId) {
+        return res.status(400).json({
+          error: 'VALIDATION_ERROR',
+          message: 'Repository ID is required',
+          field: 'repositoryId',
+        });
+      }
+      
+      // Get tags for this repository
+      const tags = await storage.getRepositoryTags(repositoryId, userId);
+      
+      res.json(tags);
     })
   );
   
@@ -1946,6 +2012,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Update preferences
       const preferences = await storage.updateUserPreferences(userId, updateData);
       
+      // Invalidate recommendations cache after preferences update
+      try {
+        const { redisManager } = await import('./redis');
+        if (redisManager.isRedisEnabled() && redisManager.isConnected()) {
+          const redisClient = await redisManager.getClient();
+          const cacheKey = `recommendations:${userId}`;
+          await redisClient.del(cacheKey);
+          console.log(`[Cache] Invalidated recommendations cache for user ${userId} after preferences update`);
+        }
+      } catch (error) {
+        console.error('[Cache] Error invalidating recommendations cache:', error);
+      }
+      
       // Track analytics event
       await trackEvent(req, 'preferences_updated', 'profile', {
         updatedFields: Object.keys(updateData),
@@ -1955,6 +2034,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }).catch(error => console.error('Error tracking preferences updated event:', error));
       
       res.json(preferences);
+    })
+  );
+
+  // ============================================
+  // AI Recommendations API Endpoint
+  // ============================================
+  
+  // Get personalized AI recommendations
+  // Requirements: 4.2, 4.16, 4.18, 4.19
+  app.get('/api/recommendations',
+    isAuthenticated,
+    checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
+    apiRateLimit, // Rate limiting for expensive AI operations
+    asyncHandler(async (req: AuthenticatedRequest, res) => {
+      const userId = req.user.claims.sub;
+      
+      // Check if Redis is available for caching
+      const { redisManager } = await import('./redis');
+      const cacheKey = `recommendations:${userId}`;
+      const cacheExpiry = 24 * 60 * 60; // 24 hours in seconds
+      
+      try {
+        // Try to get cached recommendations if Redis is available
+        if (redisManager.isRedisEnabled() && redisManager.isConnected()) {
+          const redisClient = await redisManager.getClient();
+          const cached = await redisClient.get(cacheKey);
+          
+          if (cached) {
+            console.log(`[Recommendations] Serving cached recommendations for user ${userId}`);
+            
+            // Track analytics event
+            await trackEvent(req, 'recommendations_viewed', 'profile', {
+              source: 'cache',
+            }).catch(error => console.error('Error tracking recommendations viewed event:', error));
+            
+            return res.json(JSON.parse(cached));
+          }
+        }
+      } catch (error) {
+        console.error('[Recommendations] Error checking cache:', error);
+        // Continue without cache
+      }
+      
+      // Check if user has sufficient activity data
+      const recentActivity = await storage.getUserRecentActivity(userId, 10);
+      const bookmarks = await storage.getUserBookmarks(userId);
+      
+      if (recentActivity.length === 0 && bookmarks.length === 0) {
+        // Insufficient activity data
+        await trackEvent(req, 'recommendations_insufficient_data', 'profile', {
+          activityCount: 0,
+          bookmarkCount: 0,
+        }).catch(error => console.error('Error tracking recommendations event:', error));
+        
+        return res.json({
+          recommendations: [],
+          message: 'Analyze some repositories or add bookmarks to get personalized recommendations!',
+          insufficientData: true,
+        });
+      }
+      
+      // Generate AI recommendations
+      try {
+        console.log(`[Recommendations] Generating recommendations for user ${userId}`);
+        const recommendations = await generateAIRecommendations(userId, storage, githubService);
+        
+        const response = {
+          recommendations,
+          generatedAt: new Date().toISOString(),
+          cacheExpiry: cacheExpiry,
+        };
+        
+        // Cache the results if Redis is available
+        try {
+          if (redisManager.isRedisEnabled() && redisManager.isConnected()) {
+            const redisClient = await redisManager.getClient();
+            await redisClient.setEx(cacheKey, cacheExpiry, JSON.stringify(response));
+            console.log(`[Recommendations] Cached recommendations for user ${userId}`);
+          }
+        } catch (error) {
+          console.error('[Recommendations] Error caching results:', error);
+          // Continue without caching
+        }
+        
+        // Track analytics event
+        await trackEvent(req, 'recommendations_generated', 'profile', {
+          count: recommendations.length,
+          source: 'ai',
+        }).catch(error => console.error('Error tracking recommendations generated event:', error));
+        
+        res.json(response);
+      } catch (error) {
+        console.error('[Recommendations] Error generating recommendations:', error);
+        
+        // Track error event
+        await trackEvent(req, 'recommendations_error', 'profile', {
+          error: error instanceof Error ? error.message : 'Unknown error',
+        }).catch(err => console.error('Error tracking recommendations error event:', err));
+        
+        // Return user-friendly error
+        return res.status(500).json({
+          error: 'RECOMMENDATION_GENERATION_FAILED',
+          message: 'Failed to generate recommendations. Please try again later.',
+          retryable: true,
+        });
+      }
     })
   );
 
@@ -2100,6 +2285,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     const validatedAnalysisData = insertAnalysisSchema.parse(analysisData);
     const analysis = await storage.createAnalysis(validatedAnalysisData);
+
+    // Invalidate recommendations cache after new analysis
+    if (analysisData.userId) {
+      try {
+        const { redisManager } = await import('./redis');
+        if (redisManager.isRedisEnabled() && redisManager.isConnected()) {
+          const redisClient = await redisManager.getClient();
+          const cacheKey = `recommendations:${analysisData.userId}`;
+          await redisClient.del(cacheKey);
+          console.log(`[Cache] Invalidated recommendations cache for user ${analysisData.userId}`);
+        }
+      } catch (error) {
+        console.error('[Cache] Error invalidating recommendations cache:', error);
+      }
+    }
 
     // Find and store similar repositories
     try {

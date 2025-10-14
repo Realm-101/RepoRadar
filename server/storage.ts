@@ -158,11 +158,15 @@ export interface IStorage {
   
   // Bookmarks operations
   getUserBookmarks(userId: string): Promise<Bookmark[]>;
+  getUserBookmarksPaginated(userId: string, limit: number, offset: number): Promise<Bookmark[]>;
+  getUserBookmarksCount(userId: string): Promise<number>;
   addBookmark(userId: string, repositoryId: string, notes?: string): Promise<Bookmark>;
   removeBookmark(userId: string, repositoryId: string): Promise<void>;
   
   // Tags operations
   getUserTags(userId: string): Promise<Tag[]>;
+  getUserTagsPaginated(userId: string, limit: number, offset: number): Promise<Tag[]>;
+  getUserTagsCount(userId: string): Promise<number>;
   createTag(userId: string, name: string, color?: string): Promise<Tag>;
   deleteTag(userId: string, tagId: number): Promise<void>;
   tagRepository(repositoryId: string, tagId: number, userId: string): Promise<RepositoryTag>;
@@ -840,6 +844,24 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(bookmarks.createdAt));
   }
 
+  async getUserBookmarksPaginated(userId: string, limit: number, offset: number): Promise<Bookmark[]> {
+    return await db
+      .select()
+      .from(bookmarks)
+      .where(eq(bookmarks.userId, userId))
+      .orderBy(desc(bookmarks.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async getUserBookmarksCount(userId: string): Promise<number> {
+    const [result] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(bookmarks)
+      .where(eq(bookmarks.userId, userId));
+    return result.count;
+  }
+
   async addBookmark(userId: string, repositoryId: string, notes?: string): Promise<Bookmark> {
     const [bookmark] = await db
       .insert(bookmarks)
@@ -861,6 +883,24 @@ export class DatabaseStorage implements IStorage {
       .from(tags)
       .where(eq(tags.userId, userId))
       .orderBy(tags.name);
+  }
+
+  async getUserTagsPaginated(userId: string, limit: number, offset: number): Promise<Tag[]> {
+    return await db
+      .select()
+      .from(tags)
+      .where(eq(tags.userId, userId))
+      .orderBy(tags.name)
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async getUserTagsCount(userId: string): Promise<number> {
+    const [result] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(tags)
+      .where(eq(tags.userId, userId));
+    return result.count;
   }
 
   async createTag(userId: string, name: string, color = "#FF6B35"): Promise<Tag> {

@@ -1,8 +1,11 @@
+import React from "react";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { Repository, RepositoryAnalysis } from "@shared/schema";
 import { TrackRepositoryButton } from "@/components/track-repository-button";
+import { BookmarkButton } from "@/components/bookmark-button";
+import { TagSelector } from "@/components/tag-selector";
 import { getScoreHealthIndicator, getMetricHealthIndicator } from "@/utils/health-indicators";
 
 interface RepositoryCardProps {
@@ -121,7 +124,15 @@ export default function RepositoryCard({ repository, analysis, showAnalysis = tr
                   {repository.language}
                 </Badge>
               )}
-              <div onClick={handleTrackClick}>
+              <div onClick={handleTrackClick} className="flex items-center space-x-1">
+                <BookmarkButton 
+                  repositoryId={repository.id}
+                  size="sm"
+                />
+                <TagSelector 
+                  repositoryId={repository.id}
+                  size="sm"
+                />
                 <TrackRepositoryButton 
                   repositoryId={repository.id} 
                   repositoryName={repository.fullName}

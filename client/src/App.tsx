@@ -47,6 +47,7 @@ import { SkipLink } from "@/components/skip-link";
 import { ScreenReaderAnnouncer } from "@/components/screen-reader-announcer";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { usePageTracking } from "@/hooks/usePageTracking";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -114,13 +115,15 @@ function App() {
         <QueryClientProvider client={queryClient}>
           <NeonAuthProvider>
             <TooltipProvider>
-              <SkipLink />
-              <ScreenReaderAnnouncer />
-              <KeyboardShortcutsDialog />
-              <Toaster />
-              <Router />
-              <AIAssistant />
-              <OnboardingTour />
+              <ErrorBoundary>
+                <SkipLink />
+                <ScreenReaderAnnouncer />
+                <KeyboardShortcutsDialog />
+                <Toaster />
+                <Router />
+                <AIAssistant />
+                <OnboardingTour />
+              </ErrorBoundary>
             </TooltipProvider>
           </NeonAuthProvider>
         </QueryClientProvider>

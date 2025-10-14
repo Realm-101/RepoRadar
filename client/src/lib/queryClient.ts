@@ -1,9 +1,19 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { parseApiError, isRetryableError } from "./error-handling";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    
+    // Try to parse JSON error response
+    try {
+      const errorData = JSON.parse(text);
+      const error = parseApiError(errorData);
+      throw error;
+    } catch {
+      // If not JSON, throw with status and text
+      throw new Error(`${res.status}: ${text}`);
+    }
   }
 }
 
@@ -64,11 +74,47 @@ export const queryClient = new QueryClient({
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
       refetchOnWindowFocus: false,
-      staleTime: Infinity,
-      retry: false,
+      staleTime: 5 * 60 * 1000, // 5 minutes default
+      gcTime: 10 * 60 * 1000, // 10 minutes (formerly cacheTime)
+      retry: (failureCount, error) => {
+        // Don't retry on 4xx errors (client errors)
+        if (error instanceof Error && error.message.includes('401')) return false;
+        if (error instanceof Error && error.message.includes('403')) return false;
+        if (error instanceof Error && error.message.includes('404')) return false;
+        if (error instanceof Error && error.message.includes('400')) return false;
+        
+        // Use error handling utility to determine if retryable
+        if (!isRetryableError(error)) return false;
+        
+        // Retry up to 3 times for retryable errors
+        return failureCount < 3;
+      },
+      retryDelay: (attemptIndex) => {
+        // Exponential backoff: 1s, 2s, 4s, max 30s
+        return Math.min(1000 * 2 ** attemptIndex, 30000);
+      },
     },
     mutations: {
-      retry: false,
+      retry: (failureCount, error) => {
+        // Don't retry mutations on client errors (4xx)
+        if (error instanceof Error) {
+          const message = error.message.toLowerCase();
+          if (message.includes('400') || message.includes('401') || 
+              message.includes('403') || message.includes('404')) {
+            return false;
+          }
+        }
+        
+        // Use error handling utility to determine if retryable
+        if (!isRetryableError(error)) return false;
+        
+        // Retry once for retryable errors (mutations are more sensitive)
+        return failureCount < 1;
+      },
+      retryDelay: (attemptIndex) => {
+        // Exponential backoff for mutations: 1s, 2s
+        return Math.min(1000 * 2 ** attemptIndex, 5000);
+      },
     },
   },
 });

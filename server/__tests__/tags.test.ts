@@ -211,6 +211,26 @@ describe('Tags API Endpoints', () => {
       })
     );
     
+    app.get('/api/repositories/:id/tags',
+      isAuthenticated,
+      checkFeatureAccess('advanced_analytics'),
+      asyncHandler(async (req: any, res: any) => {
+        const userId = req.user.claims.sub;
+        const repositoryId = req.params.id;
+        
+        if (!repositoryId) {
+          return res.status(400).json({
+            error: 'VALIDATION_ERROR',
+            message: 'Repository ID is required',
+            field: 'repositoryId',
+          });
+        }
+        
+        const tags = await storage.getRepositoryTags(repositoryId, userId);
+        res.json(tags);
+      })
+    );
+    
     app.delete('/api/repositories/:id/tags/:tagId',
       isAuthenticated,
       checkFeatureAccess('advanced_analytics'),
@@ -464,6 +484,45 @@ describe('Tags API Endpoints', () => {
         message: 'Invalid tag ID',
         field: 'tagId',
       });
+    });
+  });
+
+  describe('GET /api/repositories/:id/tags', () => {
+    it('should return tags for a specific repository', async () => {
+      const mockTags = [
+        { id: 1, userId: 'test-user-id', name: 'Frontend', color: '#FF6B35', createdAt: new Date() },
+        { id: 2, userId: 'test-user-id', name: 'Backend', color: '#4ECDC4', createdAt: new Date() },
+      ];
+      
+      vi.mocked(storage.getRepositoryTags).mockResolvedValue(mockTags);
+      
+      const response = await request(app)
+        .get('/api/repositories/repo-123/tags')
+        .expect(200);
+      
+      expect(response.body).toHaveLength(2);
+      expect(response.body[0]).toMatchObject({
+        id: 1,
+        name: 'Frontend',
+        color: '#FF6B35',
+      });
+      expect(storage.getRepositoryTags).toHaveBeenCalledWith('repo-123', 'test-user-id');
+    });
+    
+    it('should return empty array when repository has no tags', async () => {
+      vi.mocked(storage.getRepositoryTags).mockResolvedValue([]);
+      
+      const response = await request(app)
+        .get('/api/repositories/repo-123/tags')
+        .expect(200);
+      
+      expect(response.body).toEqual([]);
+    });
+    
+    it('should return 400 when repository ID is missing', async () => {
+      const response = await request(app)
+        .get('/api/repositories//tags')
+        .expect(404); // Express returns 404 for missing params in path
     });
   });
 
