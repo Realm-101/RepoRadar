@@ -48,7 +48,8 @@ RepoRadar is a high-performance, full-stack web application that provides AI-pow
 - Node.js 18+ 
 - PostgreSQL database
 - GitHub token (optional, for higher rate limits)
-- Google Gemini API key
+- Google Gemini API key (required for primary AI)
+- OpenAI API key (optional, for AI fallback)
 
 ### Installation
 

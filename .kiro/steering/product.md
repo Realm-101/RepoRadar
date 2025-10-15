@@ -11,10 +11,17 @@ Help users discover, analyze, and compare GitHub repositories based on key metri
 - Monetization potential
 - Usefulness
 
+## AI Infrastructure
+
+RepoRadar uses a dual-AI system for maximum reliability:
+- **Primary**: Google Gemini 2.5 Pro for fast, cost-effective analysis
+- **Fallback**: OpenAI GPT-5 automatically takes over if Gemini encounters issues
+- **Graceful Degradation**: Basic metric-based analysis if both AI services are unavailable
+
 ## Key Features
 
 ### Analysis
-- AI-powered repository analysis using Google Gemini 2.5 Pro
+- AI-powered repository analysis using dual-AI system (Gemini 2.5 Pro + GPT-5 fallback)
 - Batch analysis with progress tracking
 - Find similar repositories
 - Export results (PDF/CSV)

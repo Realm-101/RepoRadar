@@ -1,19 +1,31 @@
 import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 import { AppError, ErrorCodes } from '@shared/errors';
 import { retryHandler } from './utils/retryHandler';
 import { queueGeminiRequest, geminiQueue } from './utils/geminiQueue';
 
 const GEMINI_ENABLED = !!process.env.GEMINI_API_KEY;
+const OPENAI_ENABLED = !!process.env.OPENAI_API_KEY;
 
-if (!GEMINI_ENABLED) {
-  console.warn('Gemini API key not configured - AI features will be limited');
+if (!GEMINI_ENABLED && !OPENAI_ENABLED) {
+  console.warn('No AI API keys configured - AI features will be limited');
+} else if (!GEMINI_ENABLED) {
+  console.warn('Gemini API key not configured - using OpenAI as primary provider');
+} else if (!OPENAI_ENABLED) {
+  console.warn('OpenAI API key not configured - no fallback available');
 }
 
 const ai = GEMINI_ENABLED 
   ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
   : null;
 
+const openai = OPENAI_ENABLED
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
+  : null;
+
 export const isGeminiEnabled = () => GEMINI_ENABLED;
+export const isOpenAIEnabled = () => OPENAI_ENABLED;
+export const isAIEnabled = () => GEMINI_ENABLED || OPENAI_ENABLED;
 
 /**
  * Handle Gemini API errors and convert to AppError
@@ -74,6 +86,92 @@ function handleGeminiError(error: unknown, context: string): never {
     ErrorCodes.ANALYSIS_FAILED.statusCode,
     ErrorCodes.ANALYSIS_FAILED.recoveryAction
   );
+}
+
+/**
+ * Analyze repository using OpenAI GPT-5 as fallback
+ */
+async function analyzeRepositoryWithOpenAI(repo: RepositoryAnalysisInput): Promise<RepositoryAnalysisResult> {
+  if (!openai) {
+    throw new Error('OpenAI not configured');
+  }
+
+  const systemPrompt = `You are an expert software repository analyst. Analyze the given repository and provide a comprehensive evaluation with detailed reasoning.
+
+Rate each aspect from 1-10 and provide detailed insights:
+1. Originality: How unique and innovative is this project? Consider novelty of approach, creative problem-solving, and differentiation from existing solutions.
+2. Completeness: How complete and production-ready is the codebase? Consider documentation, testing, error handling, and polish.
+3. Marketability: How appealing would this be to users/customers? Consider demand, user experience, and competitive positioning.
+4. Monetization: What are the potential revenue opportunities? Consider business models, target market size, and value proposition.
+5. Usefulness: How practically useful is this project? Consider real-world applicability, problem severity, and user impact.
+
+Provide detailed explanations for WHY each score was given.
+Include:
+- A concise summary (2-3 sentences)
+- 3-5 key strengths with clear reasoning
+- 3-5 areas for improvement with specific explanations
+- 3-5 actionable recommendations with expected impact`;
+
+  const repoInfo = `
+Repository: ${repo.name}
+Description: ${repo.description}
+Primary Language: ${repo.language}
+Stars: ${repo.stars}
+Forks: ${repo.forks}
+Size: ${repo.size} KB
+Languages: ${JSON.stringify(repo.languages)}
+Topics: ${repo.topics.join(', ')}
+${repo.readme ? `README Preview: ${repo.readme.substring(0, 2000)}...` : 'No README available'}
+`;
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-5",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: repoInfo }
+    ],
+    response_format: { type: "json_object" },
+    temperature: 0.7,
+  });
+
+  const content = response.choices[0]?.message?.content;
+  if (!content) {
+    throw new Error('No response from OpenAI');
+  }
+
+  const result = JSON.parse(content);
+  
+  // Ensure all scores are between 1-10
+  ['originality', 'completeness', 'marketability', 'monetization', 'usefulness', 'overallScore'].forEach(key => {
+    if (result[key]) {
+      result[key] = Math.max(1, Math.min(10, result[key]));
+    }
+  });
+
+  return result;
+}
+
+/**
+ * Ask AI assistant using OpenAI as fallback
+ */
+async function askAIWithOpenAI(question: string): Promise<string> {
+  if (!openai) {
+    throw new Error('OpenAI not configured');
+  }
+
+  const systemPrompt = `You are an AI assistant for RepoRadar, a GitHub repository analysis platform. Provide helpful, concise answers about RepoRadar features, guide users through navigation, explain metrics and scoring, help troubleshoot issues, and suggest relevant features.`;
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-5",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: question }
+    ],
+    temperature: 0.7,
+    max_tokens: 1000,
+  });
+
+  return response.choices[0]?.message?.content || "I apologize, but I couldn't generate a response. Please try again.";
 }
 
 export interface RepositoryAnalysisInput {
@@ -392,18 +490,10 @@ Return ONLY the top 10 repositories as a JSON array with this exact structure:
 }
 
 export async function askAI(question: string): Promise<string> {
-  if (!isGeminiEnabled() || !ai) {
-    throw new AppError(
-      ErrorCodes.EXTERNAL_API_ERROR.code,
-      'Gemini API not configured',
-      'AI assistant is currently unavailable.',
-      ErrorCodes.EXTERNAL_API_ERROR.statusCode,
-      'Contact support or try again later'
-    );
-  }
-
-  try {
-    return await retryHandler.executeWithRetry(async () => {
+  // Try Gemini first if available
+  if (isGeminiEnabled() && ai) {
+    try {
+      return await retryHandler.executeWithRetry(async () => {
       const systemPrompt = `You are an AI assistant for RepoRadar (formerly RepoAnalyzer), a GitHub repository analysis platform powered by Google Gemini 2.5 Pro.
 
 CORE FEATURES:
@@ -660,22 +750,66 @@ RESPONSE STYLE:
         console.log(`Retrying AI assistant (attempt ${attempt}):`, error.message);
       }
     });
-  } catch (error) {
-    if (error instanceof AppError) {
-      throw error;
+    } catch (error) {
+      console.error('Error with Gemini AI assistant, trying OpenAI fallback:', error);
+      
+      // Try OpenAI as fallback
+      if (isOpenAIEnabled() && openai) {
+        try {
+          console.log('Using OpenAI GPT-5 as fallback for AI assistant');
+          return await askAIWithOpenAI(question);
+        } catch (openaiError) {
+          console.error('OpenAI fallback also failed:', openaiError);
+          throw new AppError(
+            ErrorCodes.EXTERNAL_API_ERROR.code,
+            'Both AI services failed',
+            'AI assistant is temporarily unavailable.',
+            ErrorCodes.EXTERNAL_API_ERROR.statusCode,
+            'Please try again in a moment'
+          );
+        }
+      }
+      
+      // No fallback available
+      if (error instanceof AppError) {
+        throw error;
+      }
+      handleGeminiError(error, 'AI assistant');
     }
-    handleGeminiError(error, 'AI assistant');
   }
+  
+  // If Gemini not available, try OpenAI
+  if (isOpenAIEnabled() && openai) {
+    try {
+      console.log('Gemini not available, using OpenAI GPT-5 for AI assistant');
+      return await askAIWithOpenAI(question);
+    } catch (error) {
+      console.error('Error with OpenAI AI assistant:', error);
+      throw new AppError(
+        ErrorCodes.EXTERNAL_API_ERROR.code,
+        'OpenAI API error',
+        'AI assistant is currently unavailable.',
+        ErrorCodes.EXTERNAL_API_ERROR.statusCode,
+        'Contact support or try again later'
+      );
+    }
+  }
+  
+  // No AI available
+  throw new AppError(
+    ErrorCodes.EXTERNAL_API_ERROR.code,
+    'No AI API configured',
+    'AI assistant is currently unavailable.',
+    ErrorCodes.EXTERNAL_API_ERROR.statusCode,
+    'Contact support or try again later'
+  );
 }
 
 export async function analyzeRepository(repo: RepositoryAnalysisInput): Promise<RepositoryAnalysisResult> {
-  if (!isGeminiEnabled() || !ai) {
-    // Return fallback analysis when AI is not available
-    return createFallbackAnalysis(repo);
-  }
-
-  try {
-    return await retryHandler.executeWithRetry(async () => {
+  // Try Gemini first if available
+  if (isGeminiEnabled() && ai) {
+    try {
+      return await retryHandler.executeWithRetry(async () => {
       const systemPrompt = `You are an expert software repository analyst. Analyze the given repository and provide a comprehensive evaluation with detailed reasoning.
 
 Rate each aspect from 1-10 and provide detailed insights:
@@ -828,16 +962,37 @@ ${repo.readme ? `README Preview: ${repo.readme.substring(0, 2000)}...` : 'No REA
         console.log(`Retrying repository analysis (attempt ${attempt}):`, error.message);
       }
     });
-  } catch (error) {
-    if (error instanceof AppError) {
-      throw error;
+    } catch (error) {
+      console.error('Error analyzing repository with Gemini, trying OpenAI fallback:', error);
+      
+      // Try OpenAI as fallback
+      if (isOpenAIEnabled() && openai) {
+        try {
+          console.log('Using OpenAI GPT-5 as fallback for repository analysis');
+          return await analyzeRepositoryWithOpenAI(repo);
+        } catch (openaiError) {
+          console.error('OpenAI fallback also failed:', openaiError);
+        }
+      }
+      
+      // If both fail or OpenAI not available, use basic fallback
+      return createFallbackAnalysis(repo);
     }
-    
-    console.error('Error analyzing repository with Gemini:', error);
-    
-    // Fallback to basic analysis instead of throwing
-    return createFallbackAnalysis(repo);
   }
+  
+  // If Gemini not available, try OpenAI
+  if (isOpenAIEnabled() && openai) {
+    try {
+      console.log('Gemini not available, using OpenAI GPT-5 for repository analysis');
+      return await analyzeRepositoryWithOpenAI(repo);
+    } catch (error) {
+      console.error('Error analyzing repository with OpenAI:', error);
+      return createFallbackAnalysis(repo);
+    }
+  }
+  
+  // No AI available, return basic fallback
+  return createFallbackAnalysis(repo);
 }
 
 function createFallbackAnalysis(repo: RepositoryAnalysisInput): RepositoryAnalysisResult {

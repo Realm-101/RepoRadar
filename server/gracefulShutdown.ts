@@ -58,6 +58,9 @@ class GracefulShutdownHandler {
         // Drain connections
         await this.drainConnections(logger);
 
+        // Close cache service
+        await this.closeCache(logger);
+
         // Close Redis connection
         await this.closeRedis(logger);
 
@@ -125,12 +128,27 @@ class GracefulShutdownHandler {
   }
 
   /**
+   * Close cache service
+   */
+  private async closeCache(logger: (message: string) => void): Promise<void> {
+    try {
+      logger('Shutting down cache service...');
+      const { cacheService } = await import('./cache.js');
+      await cacheService.shutdown();
+      logger('Cache service shutdown complete');
+    } catch (error) {
+      logger(`Error shutting down cache: ${error}`);
+      // Don't throw error to prevent shutdown failure
+    }
+  }
+
+  /**
    * Close Redis connection
    */
   private async closeRedis(logger: (message: string) => void): Promise<void> {
     try {
       logger('Closing Redis connection...');
-      const { redisManager } = await import('./redis');
+      const { redisManager } = await import('./redis.js');
       
       if (!redisManager.isRedisEnabled()) {
         logger('Redis is disabled, skipping disconnect');
@@ -151,7 +169,7 @@ class GracefulShutdownHandler {
   private async closeJobQueue(logger: (message: string) => void): Promise<void> {
     try {
       logger('Closing job queue...');
-      const { jobQueue } = await import('./jobs');
+      const { jobQueue } = await import('./jobs/JobQueue.js');
       await jobQueue.close();
       logger('Job queue closed');
     } catch (error) {

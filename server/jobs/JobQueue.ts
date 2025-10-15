@@ -131,38 +131,45 @@ export class JobQueue {
 
   /**
    * Add a job to the queue
+   * Requirement 3.1: Graceful handling when Redis unavailable
    */
   async addJob<T>(jobType: string, data: T, options: JobOptions = {}): Promise<Job<T>> {
     if (!this.isQueueAvailable()) {
-      throw new Error('Job queue is not available (Redis disabled)');
+      console.warn(`Job queue is not available (Redis disabled) - job ${jobType} will not be queued`);
+      throw new Error('Job queue is not available (Redis disabled). Background jobs are disabled.');
     }
 
     const job = new Job<T>(jobType, data, options);
 
-    // Add to BullMQ queue
-    await this.queue.add(
-      jobType,
-      {
-        jobId: job.id,
+    try {
+      // Add to BullMQ queue
+      await this.queue.add(
         jobType,
-        data,
-      },
-      {
-        jobId: job.id,
-        priority: options.priority,
-        attempts: options.maxAttempts || 3,
-        backoff: {
-          type: 'exponential',
-          delay: 1000, // Start with 1 second
+        {
+          jobId: job.id,
+          jobType,
+          data,
         },
-        removeOnComplete: false, // Keep completed jobs for tracking
-        removeOnFail: false, // Keep failed jobs for debugging
-        delay: options.delay,
-      }
-    );
+        {
+          jobId: job.id,
+          priority: options.priority,
+          attempts: options.maxAttempts || 3,
+          backoff: {
+            type: 'exponential',
+            delay: 1000, // Start with 1 second
+          },
+          removeOnComplete: false, // Keep completed jobs for tracking
+          removeOnFail: false, // Keep failed jobs for debugging
+          delay: options.delay,
+        }
+      );
 
-    console.log(`Added job ${job.id} of type ${jobType} to queue`);
-    return job;
+      console.log(`Added job ${job.id} of type ${jobType} to queue`);
+      return job;
+    } catch (error) {
+      console.error(`Failed to add job ${job.id} to queue:`, error);
+      throw new Error(`Failed to queue job: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   /**
@@ -305,6 +312,7 @@ export class JobQueue {
 
   /**
    * Get queue statistics
+   * Requirement 3.1: Graceful handling when Redis unavailable
    */
   async getStats(): Promise<{
     waiting: number;
@@ -313,14 +321,35 @@ export class JobQueue {
     failed: number;
     delayed: number;
   }> {
-    const counts = await this.queue.getJobCounts();
-    return {
-      waiting: counts.waiting || 0,
-      active: counts.active || 0,
-      completed: counts.completed || 0,
-      failed: counts.failed || 0,
-      delayed: counts.delayed || 0,
-    };
+    if (!this.isQueueAvailable()) {
+      return {
+        waiting: 0,
+        active: 0,
+        completed: 0,
+        failed: 0,
+        delayed: 0,
+      };
+    }
+
+    try {
+      const counts = await this.queue.getJobCounts();
+      return {
+        waiting: counts.waiting || 0,
+        active: counts.active || 0,
+        completed: counts.completed || 0,
+        failed: counts.failed || 0,
+        delayed: counts.delayed || 0,
+      };
+    } catch (error) {
+      console.error('Failed to get queue stats:', error);
+      return {
+        waiting: 0,
+        active: 0,
+        completed: 0,
+        failed: 0,
+        delayed: 0,
+      };
+    }
   }
 
   /**

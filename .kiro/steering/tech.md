@@ -39,7 +39,8 @@
 - **WebSockets**: Socket.io with Redis adapter
 
 ### AI & External Services
-- **AI Provider**: Google Gemini 2.5 Pro
+- **Primary AI Provider**: Google Gemini 2.5 Pro
+- **Fallback AI Provider**: OpenAI GPT-5 (optional)
 - **GitHub API**: Octokit
 - **Payments**: Stripe
 - **Authentication**: Replit OIDC with Passport.js
@@ -102,7 +103,8 @@ npm run lighthouse       # Run Lighthouse audit
 
 Key environment variables (see `.env.example` for full list):
 - `DATABASE_URL` - PostgreSQL connection string (required)
-- `GEMINI_API_KEY` - Google Gemini API key (required)
+- `GEMINI_API_KEY` - Google Gemini API key (required for primary AI)
+- `OPENAI_API_KEY` - OpenAI API key (optional, for AI fallback)
 - `GITHUB_TOKEN` - GitHub API token (optional, for higher rate limits)
 - `REDIS_URL` - Redis connection string (optional)
 - `STRIPE_SECRET_KEY` - Stripe secret key (optional)

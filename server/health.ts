@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { db, checkDatabaseHealth } from './db';
+import { checkDatabaseHealth } from './db';
 import { isStripeEnabled } from './stripe';
 import { isGeminiEnabled } from './gemini';
 import { redisManager } from './redis';
@@ -8,19 +8,22 @@ import { jobQueue } from './jobs/JobQueue';
 interface HealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
   timestamp: string;
+  uptime: number;
   checks: {
     database: CheckResult;
-    cache: CheckResult;
-    api: CheckResult;
-    queue: CheckResult;
+    redis: CheckResult;
+    memory: CheckResult;
+    cpu: CheckResult;
+    api?: CheckResult;
+    queue?: CheckResult;
   };
   version?: string;
-  uptime: number;
 }
 
 interface CheckResult {
-  status: 'up' | 'down' | 'degraded';
-  responseTime: number;
+  status: 'healthy' | 'unhealthy' | 'degraded';
+  latency?: number;
+  usage?: number;
   message?: string;
   details?: Record<string, any>;
 }
@@ -30,7 +33,7 @@ interface ReadinessStatus {
   timestamp: string;
   checks: {
     database: CheckResult;
-    cache: CheckResult;
+    redis: CheckResult;
   };
 }
 
@@ -49,9 +52,9 @@ interface LivenessStatus {
 /**
  * Overall health check endpoint
  * Returns comprehensive health status of all system components
- * Requirement 10.1: Overall application health status
+ * Requirements: 5.1, 5.2, 5.3, 5.4, 5.5
  */
-export async function healthCheck(req: Request, res: Response) {
+export async function healthCheck(_req: Request, res: Response) {
   const startTime = Date.now();
   const timeout = 2000; // 2 second timeout (Requirement 10.4)
 
@@ -76,57 +79,61 @@ export async function healthCheck(req: Request, res: Response) {
 
     res.status(httpStatus).json(health);
   } catch (error) {
-    // If health check times out or fails, return unhealthy status
+    // If health check times out or fails, return unhealthy status (Requirement 5.4)
     res.status(503).json({
       status: 'unhealthy',
       timestamp: new Date().toISOString(),
+      uptime: Math.round(process.uptime()),
       checks: {
-        database: { status: 'down', responseTime: 0, message: 'Health check timeout' },
-        cache: { status: 'down', responseTime: 0, message: 'Health check timeout' },
-        api: { status: 'down', responseTime: 0, message: 'Health check timeout' },
-        queue: { status: 'down', responseTime: 0, message: 'Health check timeout' },
+        database: { status: 'unhealthy', latency: 0, message: 'Health check timeout' },
+        redis: { status: 'unhealthy', latency: 0, message: 'Health check timeout' },
+        memory: { status: 'unhealthy', usage: 0, message: 'Health check timeout' },
+        cpu: { status: 'unhealthy', usage: 0, message: 'Health check timeout' },
       },
-      uptime: process.uptime(),
     });
   }
 }
 
 /**
  * Perform all health checks
+ * Requirements: 5.1, 5.2, 5.3, 5.4, 5.5
  */
 async function performHealthChecks(): Promise<HealthStatus> {
   const health: HealthStatus = {
     status: 'healthy',
     timestamp: new Date().toISOString(),
+    uptime: Math.round(process.uptime()),
     checks: {
-      database: { status: 'down', responseTime: 0 },
-      cache: { status: 'down', responseTime: 0 },
-      api: { status: 'down', responseTime: 0 },
-      queue: { status: 'down', responseTime: 0 },
+      database: { status: 'unhealthy', latency: 0 },
+      redis: { status: 'unhealthy', latency: 0 },
+      memory: { status: 'healthy', usage: 0 },
+      cpu: { status: 'healthy', usage: 0 },
     },
-    uptime: process.uptime(),
   };
 
-  // Check database (Requirement 10.4)
+  // Check database connectivity (Requirement 5.2)
   health.checks.database = await checkDatabase();
   
-  // Check Redis cache (Requirement 10.5)
-  health.checks.cache = await checkRedis();
+  // Check Redis connectivity - non-blocking (Requirement 5.3)
+  health.checks.redis = await checkRedis();
   
-  // Check API health (Requirement 10.6)
-  health.checks.api = await checkAPI();
+  // Check memory usage (Requirement 5.3)
+  health.checks.memory = checkMemory();
   
-  // Check job queue (Requirement 10.7)
-  health.checks.queue = await checkJobQueue();
+  // Check CPU usage (Requirement 5.3)
+  health.checks.cpu = checkCPU();
 
-  // Determine overall health status
-  const checks = Object.values(health.checks);
-  const hasDown = checks.some(check => check.status === 'down');
-  const hasDegraded = checks.some(check => check.status === 'degraded');
-
-  if (hasDown) {
+  // Determine overall health status (Requirement 5.4)
+  // Database down = unhealthy
+  // Redis down = degraded (non-critical)
+  // High memory/CPU = degraded
+  if (health.checks.database.status === 'unhealthy') {
     health.status = 'unhealthy';
-  } else if (hasDegraded) {
+  } else if (
+    health.checks.redis.status === 'degraded' ||
+    health.checks.memory.status === 'degraded' ||
+    health.checks.cpu.status === 'degraded'
+  ) {
     health.status = 'degraded';
   }
 
@@ -135,7 +142,7 @@ async function performHealthChecks(): Promise<HealthStatus> {
 
 /**
  * Check database connectivity
- * Requirement 10.4: Database connectivity check
+ * Requirement 5.2: Verify database connectivity
  * Requirement 2.3: Verify database connectivity via health checks
  */
 async function checkDatabase(): Promise<CheckResult> {
@@ -144,38 +151,38 @@ async function checkDatabase(): Promise<CheckResult> {
     
     if (health.status === 'unhealthy') {
       return {
-        status: 'down',
-        responseTime: health.responseTime,
+        status: 'unhealthy',
+        latency: health.responseTime,
         message: health.details || 'Database connection failed',
       };
     }
     
     return {
-      status: health.responseTime < 100 ? 'up' : 'degraded',
-      responseTime: health.responseTime,
+      status: health.responseTime < 100 ? 'healthy' : 'degraded',
+      latency: health.responseTime,
       message: health.responseTime >= 100 ? 'High database latency' : undefined,
       details: health.poolStats,
     };
   } catch (error: any) {
     return {
-      status: 'down',
-      responseTime: 0,
+      status: 'unhealthy',
+      latency: 0,
       message: error.message || 'Database connection failed',
     };
   }
 }
 
 /**
- * Check Redis connectivity
- * Requirement 10.5: Redis connectivity check
+ * Check Redis connectivity (non-blocking)
+ * Requirement 5.3: Redis connectivity check (non-blocking)
  * Requirement 3.4: Update health check to report Redis status without failing
  */
 async function checkRedis(): Promise<CheckResult> {
   try {
     if (!redisManager.isRedisEnabled()) {
       return {
-        status: 'up',
-        responseTime: 0,
+        status: 'healthy',
+        latency: 0,
         message: 'Redis is disabled (using fallback mechanisms)',
         details: {
           enabled: false,
@@ -186,12 +193,12 @@ async function checkRedis(): Promise<CheckResult> {
     
     const healthStatus = await redisManager.getHealthStatus();
     
-    // If Redis is down, report as degraded but not down
+    // If Redis is down, report as degraded but not unhealthy
     // This allows the application to continue with fallback mechanisms
     if (healthStatus.status === 'down') {
       return {
         status: 'degraded',
-        responseTime: healthStatus.responseTime,
+        latency: healthStatus.responseTime,
         message: `Redis unavailable (using fallback): ${healthStatus.message || 'Connection failed'}`,
         details: {
           enabled: true,
@@ -202,7 +209,8 @@ async function checkRedis(): Promise<CheckResult> {
     }
     
     return {
-      ...healthStatus,
+      status: healthStatus.status === 'up' ? 'healthy' : 'degraded',
+      latency: healthStatus.responseTime,
       details: {
         enabled: true,
         connected: true,
@@ -213,7 +221,7 @@ async function checkRedis(): Promise<CheckResult> {
     // Redis check failure should not fail the health check
     return {
       status: 'degraded',
-      responseTime: 0,
+      latency: 0,
       message: `Redis check failed (using fallback): ${error.message || 'Unknown error'}`,
       details: {
         enabled: true,
@@ -222,6 +230,74 @@ async function checkRedis(): Promise<CheckResult> {
       },
     };
   }
+}
+
+/**
+ * Check memory usage
+ * Requirement 5.3: Include memory usage metrics
+ */
+function checkMemory(): CheckResult {
+  const memUsage = process.memoryUsage();
+  const heapUsedMB = memUsage.heapUsed / 1024 / 1024;
+  const heapTotalMB = memUsage.heapTotal / 1024 / 1024;
+  const usagePercent = (heapUsedMB / heapTotalMB) * 100;
+
+  let status: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
+  let message: string | undefined;
+
+  // Memory thresholds
+  if (usagePercent > 90) {
+    status = 'unhealthy';
+    message = 'Critical memory usage';
+  } else if (usagePercent > 80) {
+    status = 'degraded';
+    message = 'High memory usage';
+  }
+
+  return {
+    status,
+    usage: Math.round(usagePercent * 10) / 10, // Round to 1 decimal
+    message,
+    details: {
+      heapUsed: Math.round(heapUsedMB),
+      heapTotal: Math.round(heapTotalMB),
+      rss: Math.round(memUsage.rss / 1024 / 1024),
+      external: Math.round(memUsage.external / 1024 / 1024),
+    },
+  };
+}
+
+/**
+ * Check CPU usage
+ * Requirement 5.3: Include CPU usage metrics
+ */
+function checkCPU(): CheckResult {
+  const cpuUsage = process.cpuUsage();
+  const totalCPU = cpuUsage.user + cpuUsage.system;
+  const uptimeMs = process.uptime() * 1000000; // Convert to microseconds
+  const usagePercent = (totalCPU / uptimeMs) * 100;
+
+  let status: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
+  let message: string | undefined;
+
+  // CPU thresholds
+  if (usagePercent > 90) {
+    status = 'unhealthy';
+    message = 'Critical CPU usage';
+  } else if (usagePercent > 80) {
+    status = 'degraded';
+    message = 'High CPU usage';
+  }
+
+  return {
+    status,
+    usage: Math.round(usagePercent * 10) / 10, // Round to 1 decimal
+    message,
+    details: {
+      user: cpuUsage.user,
+      system: cpuUsage.system,
+    },
+  };
 }
 
 /**
@@ -239,21 +315,21 @@ async function checkAPI(): Promise<CheckResult> {
   details.gemini = geminiEnabled ? 'enabled' : 'disabled';
   details.stripe = stripeEnabled ? 'enabled' : 'disabled';
 
-  const responseTime = Date.now() - startTime;
+  const latency = Date.now() - startTime;
 
   // API is considered healthy if at least Gemini is enabled (core functionality)
   if (!geminiEnabled) {
     return {
       status: 'degraded',
-      responseTime,
+      latency,
       message: 'Gemini AI service not configured',
       details,
     };
   }
 
   return {
-    status: 'up',
-    responseTime,
+    status: 'healthy',
+    latency,
     details,
   };
 }
@@ -268,13 +344,13 @@ async function checkJobQueue(): Promise<CheckResult> {
   try {
     // Check if job queue is initialized and get stats
     const stats = await jobQueue.getStats();
-    const responseTime = Date.now() - startTime;
+    const latency = Date.now() - startTime;
 
     // Check for concerning queue conditions
     const totalJobs = stats.waiting + stats.active + stats.delayed;
     const failedRatio = stats.failed / (stats.completed + stats.failed || 1);
 
-    let status: 'up' | 'degraded' | 'down' = 'up';
+    let status: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
     let message: string | undefined;
 
     // Queue is degraded if there are too many waiting jobs or high failure rate
@@ -288,14 +364,14 @@ async function checkJobQueue(): Promise<CheckResult> {
 
     return {
       status,
-      responseTime,
+      latency,
       message,
       details: stats,
     };
   } catch (error: any) {
     return {
-      status: 'down',
-      responseTime: Date.now() - startTime,
+      status: 'unhealthy',
+      latency: Date.now() - startTime,
       message: error.message || 'Job queue check failed',
     };
   }
@@ -307,7 +383,7 @@ async function checkJobQueue(): Promise<CheckResult> {
  * Requirement 10.2: Readiness checks
  * Requirement 10.7: Readiness checks fail until all services are initialized
  */
-export async function readinessCheck(req: Request, res: Response) {
+export async function readinessCheck(_req: Request, res: Response) {
   const startTime = Date.now();
   const timeout = 2000; // 2 second timeout (Requirement 10.4)
 
@@ -333,8 +409,8 @@ export async function readinessCheck(req: Request, res: Response) {
       status: 'not ready',
       timestamp: new Date().toISOString(),
       checks: {
-        database: { status: 'down', responseTime: 0, message: 'Readiness check timeout' },
-        cache: { status: 'down', responseTime: 0, message: 'Readiness check timeout' },
+        database: { status: 'unhealthy', latency: 0, message: 'Readiness check timeout' },
+        redis: { status: 'unhealthy', latency: 0, message: 'Readiness check timeout' },
       },
     });
   }
@@ -349,18 +425,18 @@ async function performReadinessChecks(): Promise<ReadinessStatus> {
     status: 'ready',
     timestamp: new Date().toISOString(),
     checks: {
-      database: { status: 'down', responseTime: 0 },
-      cache: { status: 'down', responseTime: 0 },
+      database: { status: 'unhealthy', latency: 0 },
+      redis: { status: 'unhealthy', latency: 0 },
     },
   };
 
   // Check essential services
   readiness.checks.database = await checkDatabase();
-  readiness.checks.cache = await checkRedis();
+  readiness.checks.redis = await checkRedis();
 
   // Application is ready if database is up
   // Cache (Redis) is optional - application can run with fallback mechanisms
-  const isReady = readiness.checks.database.status === 'up';
+  const isReady = readiness.checks.database.status === 'healthy';
 
   readiness.status = isReady ? 'ready' : 'not ready';
 
@@ -372,7 +448,7 @@ async function performReadinessChecks(): Promise<ReadinessStatus> {
  * Confirms that the application process is responsive
  * Requirement 10.3: Liveness checks
  */
-export async function livenessCheck(req: Request, res: Response) {
+export async function livenessCheck(_req: Request, res: Response) {
   // Simple liveness check - just return OK if the process is running
   // This should be very fast and not depend on external services
   const memUsage = process.memoryUsage();
