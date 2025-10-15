@@ -29,6 +29,7 @@ class RedisConnectionManager {
 
   /**
    * Get or create Redis client
+   * Requirement 3.1: Graceful fallback when Redis unavailable
    */
   async getClient(): Promise<RedisClientType> {
     if (!this.isEnabled) {
@@ -48,6 +49,33 @@ class RedisConnectionManager {
     }
 
     return this.connect();
+  }
+
+  /**
+   * Try to get Redis client without throwing errors
+   * Returns null if Redis is unavailable
+   * Requirement 3.1: Non-blocking Redis access
+   */
+  async tryGetClient(): Promise<RedisClientType | null> {
+    try {
+      if (!this.isEnabled) {
+        return null;
+      }
+
+      if (this.client && this.client.isOpen) {
+        return this.client;
+      }
+
+      // Don't wait for connection if already connecting
+      if (this.isConnecting) {
+        return null;
+      }
+
+      return await this.connect();
+    } catch (error) {
+      console.error('Redis: Failed to get client:', error);
+      return null;
+    }
   }
 
   /**

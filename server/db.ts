@@ -14,13 +14,22 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
+// Determine if we're in production
+const isProduction = process.env.NODE_ENV === 'production';
+
 // Connection pool configuration for scalability
+// Production-appropriate settings for Render deployment
 const poolConfig = {
   connectionString: process.env.DATABASE_URL,
-  max: parseInt(process.env.DB_POOL_MAX || '20', 10), // Maximum number of connections
-  min: parseInt(process.env.DB_POOL_MIN || '2', 10), // Minimum number of connections
-  idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT || '30000', 10), // 30 seconds
-  connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT || '10000', 10), // 10 seconds
+  // Production defaults: smaller pool for serverless, larger for dedicated instances
+  max: parseInt(process.env.DB_POOL_MAX || (isProduction ? '10' : '20'), 10),
+  min: parseInt(process.env.DB_POOL_MIN || '2', 10),
+  // Shorter idle timeout in production to free up connections
+  idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT || (isProduction ? '30000' : '60000'), 10),
+  // Shorter connection timeout in production for faster failure detection
+  connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT || (isProduction ? '5000' : '10000'), 10),
+  // SSL configuration for production (Neon requires SSL)
+  ssl: isProduction ? { rejectUnauthorized: true } : undefined,
 };
 
 export const pool = new Pool(poolConfig);
@@ -39,21 +48,38 @@ export async function closePool(): Promise<void> {
 export const db = drizzle({ client: pool, schema });
 
 // Health check function for database connectivity
+// Requirement 2.3: Verify database connectivity via health checks
 export async function checkDatabaseHealth(): Promise<{
   status: 'healthy' | 'unhealthy';
   responseTime: number;
   details?: string;
+  poolStats?: {
+    total: number;
+    idle: number;
+    waiting: number;
+  };
 }> {
   const startTime = Date.now();
   try {
+    // Test database connectivity with a simple query
     await pool.query('SELECT 1');
     const responseTime = Date.now() - startTime;
+    
+    // Get connection pool statistics
+    const poolStats = {
+      total: pool.totalCount,
+      idle: pool.idleCount,
+      waiting: pool.waitingCount,
+    };
+    
     return {
       status: 'healthy',
       responseTime,
+      poolStats,
     };
   } catch (error) {
     const responseTime = Date.now() - startTime;
+    console.error('Database health check failed:', error);
     return {
       status: 'unhealthy',
       responseTime,

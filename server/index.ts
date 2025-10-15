@@ -85,15 +85,16 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || '5000', 10);
+  const host = process.env.HOST || '0.0.0.0'; // Bind to all interfaces for production
   
   // Set server timeout to 5 minutes for long-running AI analysis
   server.timeout = 300000; // 5 minutes (300 seconds)
   server.keepAliveTimeout = 305000; // Slightly longer than timeout
   server.headersTimeout = 310000; // Slightly longer than keepAliveTimeout
   
-  server.listen(port, () => {
-    logger.info(`Server listening on port ${port}`);
-    log(`serving on port ${port}`);
+  server.listen(port, host, () => {
+    logger.info(`Server listening on ${host}:${port}`);
+    log(`serving on ${host}:${port}`);
   });
 
   // Initialize graceful shutdown handler

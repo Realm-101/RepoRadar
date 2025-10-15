@@ -5,6 +5,7 @@ import { logger } from './instanceId';
 /**
  * WebSocket Redis Adapter
  * Enables WebSocket communication across multiple instances
+ * Requirement 3.3: Add fallback for Socket.io (single-instance mode)
  */
 
 export async function createWebSocketAdapter() {
@@ -12,14 +13,24 @@ export async function createWebSocketAdapter() {
     const useRedis = process.env.USE_REDIS_SESSIONS === 'true';
     
     if (!useRedis) {
-      logger.info('WebSocket: Using in-memory adapter (Redis disabled)');
+      logger.info('WebSocket: Redis disabled, using in-memory adapter (single-instance mode)');
       return null;
     }
 
-    logger.info('WebSocket: Initializing Redis adapter');
+    if (!redisManager.isRedisEnabled()) {
+      logger.info('WebSocket: Redis not enabled, using in-memory adapter (single-instance mode)');
+      return null;
+    }
+
+    logger.info('WebSocket: Attempting to initialize Redis adapter for multi-instance support');
     
-    // Get Redis client
-    const pubClient = await redisManager.getClient();
+    // Try to get Redis client with timeout
+    const pubClient = await Promise.race([
+      redisManager.getClient(),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Redis connection timeout for WebSocket')), 10000)
+      )
+    ]) as any;
     
     // Create separate subscriber client
     const subClient = pubClient.duplicate();
@@ -28,12 +39,12 @@ export async function createWebSocketAdapter() {
     // Create Redis adapter
     const adapter = createAdapter(pubClient, subClient);
     
-    logger.info('WebSocket: Redis adapter initialized');
+    logger.info('WebSocket: Redis adapter initialized successfully (multi-instance mode enabled)');
     
     return adapter;
   } catch (error) {
-    logger.error('WebSocket: Failed to initialize Redis adapter', error);
-    logger.info('WebSocket: Falling back to in-memory adapter');
+    logger.error('WebSocket: Failed to initialize Redis adapter, falling back to in-memory adapter', error);
+    logger.warn('WebSocket: Running in single-instance mode - multiple instances will not share WebSocket state');
     return null;
   }
 }

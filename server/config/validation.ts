@@ -176,6 +176,12 @@ export function validateConfiguration(): ConfigValidationResult {
     }
   }
 
+  // Validate PORT configuration
+  const port = parseInt(process.env.PORT || '5000', 10);
+  if (isNaN(port) || port < 1 || port > 65535) {
+    errors.push('PORT must be a valid port number between 1 and 65535');
+  }
+
   // Production-specific validations
   if (process.env.NODE_ENV === 'production') {
     if (!process.env.FORCE_HTTPS || process.env.FORCE_HTTPS !== 'true') {

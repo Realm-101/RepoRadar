@@ -62,23 +62,19 @@ function decryptSessionData(encryptedData: string): string {
 }
 
 /**
- * Create session store with Redis backend
+ * Create session store with Redis backend and PostgreSQL fallback
+ * Requirement 3.2: Implement fallback for session storage (PostgreSQL-backed)
  */
 export async function createSessionStore(): Promise<session.Store> {
   const useRedis = process.env.USE_REDIS_SESSIONS === 'true';
   
   if (!useRedis) {
-    console.log('Session Store: Using memory store (Redis disabled)');
-    // Use memory store as fallback
-    const MemoryStore = (await import('memorystore')).default;
-    const MemoryStoreSession = MemoryStore(session);
-    return new MemoryStoreSession({
-      checkPeriod: 86400000, // 24 hours
-    });
+    console.log('Session Store: Redis disabled, using PostgreSQL-backed sessions');
+    return createPostgreSQLSessionStore();
   }
 
   try {
-    console.log('Session Store: Initializing Redis store');
+    console.log('Session Store: Attempting to initialize Redis store');
     // Add timeout to Redis connection attempt (increased for Upstash)
     const redisClient = await Promise.race([
       redisManager.getClient(),
@@ -117,12 +113,38 @@ export async function createSessionStore(): Promise<session.Store> {
       },
     });
 
-    console.log('Session Store: Redis store initialized');
+    console.log('Session Store: Redis store initialized successfully');
     return store;
   } catch (error) {
-    console.error('Session Store: Failed to initialize Redis store, falling back to memory store', error);
+    console.error('Session Store: Failed to initialize Redis store, falling back to PostgreSQL', error);
+    return createPostgreSQLSessionStore();
+  }
+}
+
+/**
+ * Create PostgreSQL-backed session store
+ * Requirement 3.2: PostgreSQL fallback for session storage
+ */
+async function createPostgreSQLSessionStore(): Promise<session.Store> {
+  try {
+    const ConnectPgSimple = (await import('connect-pg-simple')).default;
+    const PgSession = ConnectPgSimple(session);
+    const { pool } = await import('./db.js');
     
-    // Fallback to memory store
+    const store = new PgSession({
+      pool: pool,
+      tableName: 'sessions',
+      createTableIfMissing: true,
+      pruneSessionInterval: 60 * 15, // Prune every 15 minutes
+      ttl: 7 * 24 * 60 * 60, // 7 days
+    });
+
+    console.log('Session Store: PostgreSQL store initialized');
+    return store;
+  } catch (error) {
+    console.error('Session Store: Failed to initialize PostgreSQL store, falling back to memory', error);
+    
+    // Last resort: memory store
     const MemoryStore = (await import('memorystore')).default;
     const MemoryStoreSession = MemoryStore(session);
     return new MemoryStoreSession({

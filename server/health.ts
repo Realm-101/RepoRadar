@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { db } from './db';
+import { db, checkDatabaseHealth } from './db';
 import { isStripeEnabled } from './stripe';
 import { isGeminiEnabled } from './gemini';
 import { redisManager } from './redis';
@@ -136,23 +136,30 @@ async function performHealthChecks(): Promise<HealthStatus> {
 /**
  * Check database connectivity
  * Requirement 10.4: Database connectivity check
+ * Requirement 2.3: Verify database connectivity via health checks
  */
 async function checkDatabase(): Promise<CheckResult> {
-  const startTime = Date.now();
-  
   try {
-    await db.execute('SELECT 1');
-    const responseTime = Date.now() - startTime;
+    const health = await checkDatabaseHealth();
+    
+    if (health.status === 'unhealthy') {
+      return {
+        status: 'down',
+        responseTime: health.responseTime,
+        message: health.details || 'Database connection failed',
+      };
+    }
     
     return {
-      status: responseTime < 100 ? 'up' : 'degraded',
-      responseTime,
-      message: responseTime >= 100 ? 'High database latency' : undefined,
+      status: health.responseTime < 100 ? 'up' : 'degraded',
+      responseTime: health.responseTime,
+      message: health.responseTime >= 100 ? 'High database latency' : undefined,
+      details: health.poolStats,
     };
   } catch (error: any) {
     return {
       status: 'down',
-      responseTime: Date.now() - startTime,
+      responseTime: 0,
       message: error.message || 'Database connection failed',
     };
   }
@@ -161,6 +168,7 @@ async function checkDatabase(): Promise<CheckResult> {
 /**
  * Check Redis connectivity
  * Requirement 10.5: Redis connectivity check
+ * Requirement 3.4: Update health check to report Redis status without failing
  */
 async function checkRedis(): Promise<CheckResult> {
   try {
@@ -168,17 +176,50 @@ async function checkRedis(): Promise<CheckResult> {
       return {
         status: 'up',
         responseTime: 0,
-        message: 'Redis is disabled',
+        message: 'Redis is disabled (using fallback mechanisms)',
+        details: {
+          enabled: false,
+          fallback: 'memory/postgresql',
+        },
       };
     }
     
     const healthStatus = await redisManager.getHealthStatus();
-    return healthStatus;
-  } catch (error: any) {
+    
+    // If Redis is down, report as degraded but not down
+    // This allows the application to continue with fallback mechanisms
+    if (healthStatus.status === 'down') {
+      return {
+        status: 'degraded',
+        responseTime: healthStatus.responseTime,
+        message: `Redis unavailable (using fallback): ${healthStatus.message || 'Connection failed'}`,
+        details: {
+          enabled: true,
+          connected: false,
+          fallback: 'memory/postgresql',
+        },
+      };
+    }
+    
     return {
-      status: 'down',
+      ...healthStatus,
+      details: {
+        enabled: true,
+        connected: true,
+        fallback: 'none',
+      },
+    };
+  } catch (error: any) {
+    // Redis check failure should not fail the health check
+    return {
+      status: 'degraded',
       responseTime: 0,
-      message: error.message || 'Redis connection failed',
+      message: `Redis check failed (using fallback): ${error.message || 'Unknown error'}`,
+      details: {
+        enabled: true,
+        connected: false,
+        fallback: 'memory/postgresql',
+      },
     };
   }
 }
@@ -301,6 +342,7 @@ export async function readinessCheck(req: Request, res: Response) {
 
 /**
  * Perform readiness checks
+ * Requirement 3.4: Redis status should not fail readiness check
  */
 async function performReadinessChecks(): Promise<ReadinessStatus> {
   const readiness: ReadinessStatus = {
@@ -316,9 +358,9 @@ async function performReadinessChecks(): Promise<ReadinessStatus> {
   readiness.checks.database = await checkDatabase();
   readiness.checks.cache = await checkRedis();
 
-  // Application is ready only if both database and cache are up
-  const isReady = readiness.checks.database.status === 'up' && 
-                  readiness.checks.cache.status === 'up';
+  // Application is ready if database is up
+  // Cache (Redis) is optional - application can run with fallback mechanisms
+  const isReady = readiness.checks.database.status === 'up';
 
   readiness.status = isReady ? 'ready' : 'not ready';
 
