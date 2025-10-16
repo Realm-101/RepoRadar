@@ -55,17 +55,23 @@ class GracefulShutdownHandler {
       }, timeout);
 
       try {
-        // Drain connections
+        // Step 1: Close WebSocket connections (notify clients first)
+        await this.closeWebSockets(logger);
+
+        // Step 2: Stop accepting new jobs and wait for active jobs
+        await this.closeJobQueue(logger);
+
+        // Step 3: Drain HTTP connections
         await this.drainConnections(logger);
 
-        // Close cache service
+        // Step 4: Close cache service
         await this.closeCache(logger);
 
-        // Close Redis connection
-        await this.closeRedis(logger);
+        // Step 5: Close database connections
+        await this.closeDatabase(logger);
 
-        // Close job queue
-        await this.closeJobQueue(logger);
+        // Step 6: Close Redis connection (last, as it's used by other services)
+        await this.closeRedis(logger);
 
         clearTimeout(forceShutdownTimer);
         logger('Graceful shutdown complete');
@@ -128,6 +134,68 @@ class GracefulShutdownHandler {
   }
 
   /**
+   * Close WebSocket connections
+   */
+  private async closeWebSockets(logger: (message: string) => void): Promise<void> {
+    try {
+      logger('Closing WebSocket connections...');
+      
+      // Check if server has WebSocket server attached
+      if (this.server && (this.server as any).wss) {
+        const wss = (this.server as any).wss;
+        
+        logger(`Closing ${wss.clients.size} active WebSocket connections...`);
+        
+        // Notify all connected clients about shutdown
+        wss.clients.forEach((ws: any) => {
+          try {
+            if (ws.readyState === 1) { // OPEN state
+              ws.send(JSON.stringify({
+                type: 'server_shutdown',
+                message: 'Server is shutting down for maintenance',
+                timestamp: new Date().toISOString()
+              }));
+              ws.close(1001, 'Server shutting down'); // 1001 = Going Away
+            }
+          } catch (error) {
+            // Ignore errors when closing individual connections
+          }
+        });
+        
+        // Close the WebSocket server
+        await new Promise<void>((resolve) => {
+          wss.close(() => {
+            logger('WebSocket server closed');
+            resolve();
+          });
+        });
+      } else {
+        logger('No WebSocket server found, skipping');
+      }
+      
+      logger('WebSocket connections closed');
+    } catch (error) {
+      logger(`Error closing WebSocket connections: ${error}`);
+      // Don't throw error to prevent shutdown failure
+    }
+  }
+
+  /**
+   * Close database connections
+   */
+  private async closeDatabase(logger: (message: string) => void): Promise<void> {
+    try {
+      logger('Closing database connections...');
+      const { closePool } = await import('./db.js');
+      await closePool();
+      logger('Database connections closed');
+    } catch (error) {
+      logger(`Error closing database: ${error}`);
+      // Don't throw error to prevent shutdown failure
+    }
+  }
+
+  /**
    * Close cache service
    */
   private async closeCache(logger: (message: string) => void): Promise<void> {
@@ -138,6 +206,23 @@ class GracefulShutdownHandler {
       logger('Cache service shutdown complete');
     } catch (error) {
       logger(`Error shutting down cache: ${error}`);
+      // Don't throw error to prevent shutdown failure
+    }
+  }
+
+  /**
+   * Close job queue (stops workers and waits for active jobs)
+   */
+  private async closeJobQueue(logger: (message: string) => void): Promise<void> {
+    try {
+      logger('Closing job queue...');
+      const { jobQueue } = await import('./jobs/JobQueue.js');
+      
+      // Close will wait for active jobs to complete
+      await jobQueue.close();
+      logger('Job queue closed (active jobs completed)');
+    } catch (error) {
+      logger(`Error closing job queue: ${error}`);
       // Don't throw error to prevent shutdown failure
     }
   }
@@ -159,21 +244,6 @@ class GracefulShutdownHandler {
       logger('Redis connection closed');
     } catch (error) {
       logger(`Error closing Redis: ${error}`);
-      // Don't throw error to prevent shutdown failure
-    }
-  }
-
-  /**
-   * Close job queue
-   */
-  private async closeJobQueue(logger: (message: string) => void): Promise<void> {
-    try {
-      logger('Closing job queue...');
-      const { jobQueue } = await import('./jobs/JobQueue.js');
-      await jobQueue.close();
-      logger('Job queue closed');
-    } catch (error) {
-      logger(`Error closing job queue: ${error}`);
       // Don't throw error to prevent shutdown failure
     }
   }

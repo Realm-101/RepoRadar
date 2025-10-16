@@ -4437,6 +4437,9 @@ Please review the changes carefully before merging.`;
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
   const userConnections = new Map<string, WebSocket>();
 
+  // Attach WebSocket server to HTTP server for graceful shutdown
+  (httpServer as any).wss = wss;
+
   wss.on('connection', (ws: WebSocket, req) => {
     // Parse user ID from connection (you might need to implement auth for WebSocket)
     let userId: string | null = null;

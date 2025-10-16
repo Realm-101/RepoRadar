@@ -70,8 +70,36 @@ npm run db:push
 
 # Start development server
 npm run dev
-```### 
-Production Deployment
+```### Production Deployment
+
+#### Render Deployment (Recommended)
+```bash
+# See comprehensive deployment guide
+docs/RENDER_DEPLOYMENT_GUIDE.md
+
+# Quick start:
+# 1. Create Neon database
+# 2. Create Render Web Service
+# 3. Configure environment variables
+# 4. Deploy!
+```
+
+**Deployment Resources:**
+- **[Render Deployment Guide](docs/RENDER_DEPLOYMENT_GUIDE.md)** - Complete step-by-step guide
+- **[Environment Variables Template](docs/RENDER_ENV_TEMPLATE.md)** - Copy-paste template
+- **[Troubleshooting Guide](docs/RENDER_TROUBLESHOOTING.md)** - Quick solutions
+- **[Deployment Checklist](docs/RENDER_DEPLOYMENT_CHECKLIST.md)** - Pre/post deployment checks
+- **[Deployment Verification](docs/DEPLOYMENT_VERIFICATION.md)** - Verify deployed application
+
+**Verify Deployment:**
+```bash
+# Test your deployed application
+npm run verify:deployment https://your-app.onrender.com
+
+# With authentication token
+export VERIFY_AUTH_TOKEN=your-token
+npm run verify:deployment https://your-app.onrender.com
+```
 
 #### Standard Deployment
 ```bash
@@ -147,8 +175,8 @@ BCRYPT_ROUNDS=12
 #### OAuth Setup (Optional)
 ```bash
 # Stack Auth Configuration
-NEXT_PUBLIC_STACK_PROJECT_ID=your_project_id
-NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=your_client_key
+VITE_STACK_PROJECT_ID=your_project_id
+VITE_STACK_PUBLISHABLE_CLIENT_KEY=your_client_key
 STACK_SECRET_SERVER_KEY=your_secret_key
 ```
 
@@ -367,10 +395,25 @@ npm run config:export
 
 ## 📚 Documentation
 
+### Deployment
+- **[Render Deployment Guide](docs/RENDER_DEPLOYMENT_GUIDE.md)** - Complete Render deployment guide
+- **[Environment Variables Template](docs/RENDER_ENV_TEMPLATE.md)** - Environment configuration template
+- **[Troubleshooting Guide](docs/RENDER_TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Deployment Checklist](docs/RENDER_DEPLOYMENT_CHECKLIST.md)** - Pre/post deployment verification
+- **[Scaling Configuration](docs/SCALING_CONFIGURATION.md)** - Vertical and horizontal scaling guide
+
+### Performance & Configuration
 - **[Performance Configuration Guide](docs/PERFORMANCE_CONFIGURATION.md)** - Comprehensive performance tuning guide
 - **[Configuration System](config/README.md)** - Configuration management documentation
 - **[Deployment Scripts](scripts/)** - Deployment automation documentation
 - **[Docker Setup](docker/)** - Container deployment with performance optimizations
+
+### Security & Authentication
+- **[OAuth Setup Guide](docs/OAUTH_SETUP.md)** - Configure Google and GitHub OAuth
+- **[Email Service Guide](docs/EMAIL_SERVICE.md)** - Configure password reset emails
+- **[Rate Limiting Guide](docs/RATE_LIMITING.md)** - Configure rate limiting
+- **[Security Best Practices](docs/SECURITY_BEST_PRACTICES.md)** - Production security checklist
+- **[Security Configuration](docs/SECURITY_CONFIGURATION.md)** - Security headers and HTTPS
 
 ## 🔧 Environment Configuration
 

@@ -6,6 +6,7 @@ import { setupVite, serveStatic, log } from "./vite";
 import { gracefulShutdown } from "./gracefulShutdown";
 import { instanceId, logger } from "./instanceId";
 import { enforceHTTPS, setSecurityHeaders } from "./middleware/httpsEnforcement";
+import { corsMiddleware, logCorsConfiguration } from "./middleware/cors";
 import { initializeConfiguration } from "./config/validation";
 
 const app = express();
@@ -13,6 +14,9 @@ const app = express();
 // Apply security middleware first (before parsing body)
 app.use(enforceHTTPS);
 app.use(setSecurityHeaders);
+
+// Apply CORS middleware
+app.use(corsMiddleware);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -64,6 +68,29 @@ app.use((req, res, next) => {
 
   // Log instance startup
   logger.info('Starting application instance', instanceId.getMetadata());
+  
+  // Log CORS configuration
+  logCorsConfiguration();
+
+  // Initialize job processors (Requirement 9.1, 9.2)
+  try {
+    const { setupJobProcessors } = await import('./jobs/setupProcessors.js');
+    await setupJobProcessors();
+    logger.info('Job processors initialized');
+  } catch (error) {
+    // Job processor initialization failure should not prevent server startup
+    // The application can run without background jobs (Requirement 9.5)
+    logger.warn('Failed to initialize job processors (background jobs disabled)', { error });
+  }
+
+  // Initialize rate limit storage (Requirement 12.4)
+  try {
+    const { initializeRateLimitStorage } = await import('./middleware/rateLimiter');
+    initializeRateLimitStorage();
+    logger.info('Rate limit storage initialized');
+  } catch (error) {
+    logger.warn('Failed to initialize rate limit storage (using memory fallback)', { error });
+  }
 
   const server = await registerRoutes(app);
 

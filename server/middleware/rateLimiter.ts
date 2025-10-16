@@ -1,4 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
+import { redisManager, RedisClientType } from '../redis';
+import { config } from '../config';
 
 // Rate limit storage interface
 export interface RateLimitStorage {
@@ -6,6 +8,194 @@ export interface RateLimitStorage {
   get(key: string): Promise<{ count: number; resetTime: number } | null>;
   reset(key: string): Promise<void>;
   cleanup(): Promise<void>;
+}
+
+/**
+ * Redis-backed rate limit storage for distributed rate limiting
+ * Requirement 12.4: Use Redis for distributed rate limiting when available
+ */
+export class RedisRateLimitStorage implements RateLimitStorage {
+  private keyPrefix: string;
+
+  constructor(keyPrefix = 'ratelimit:') {
+    this.keyPrefix = keyPrefix;
+  }
+
+  async increment(key: string, windowMs: number): Promise<{ count: number; resetTime: number }> {
+    const client = await redisManager.tryGetClient();
+    
+    if (!client) {
+      throw new Error('Redis client not available');
+    }
+
+    const redisKey = `${this.keyPrefix}${key}`;
+    const now = Date.now();
+    const resetTime = now + windowMs;
+
+    try {
+      // Use Redis pipeline for atomic operations
+      const pipeline = client.multi();
+      
+      // Increment counter
+      pipeline.incr(redisKey);
+      
+      // Set expiration if key is new
+      pipeline.pExpire(redisKey, windowMs);
+      
+      // Get TTL to calculate reset time
+      pipeline.pTTL(redisKey);
+      
+      const results = await pipeline.exec();
+      
+      if (!results) {
+        throw new Error('Redis pipeline execution failed');
+      }
+
+      const count = Number(results[0]) || 0;
+      const ttl = Number(results[2]) || windowMs;
+      
+      // Calculate actual reset time based on TTL
+      const actualResetTime = ttl > 0 ? now + ttl : resetTime;
+
+      return {
+        count,
+        resetTime: actualResetTime,
+      };
+    } catch (error) {
+      console.error('Redis rate limit increment error:', error);
+      throw error;
+    }
+  }
+
+  async get(key: string): Promise<{ count: number; resetTime: number } | null> {
+    const client = await redisManager.tryGetClient();
+    
+    if (!client) {
+      return null;
+    }
+
+    const redisKey = `${this.keyPrefix}${key}`;
+    const now = Date.now();
+
+    try {
+      const pipeline = client.multi();
+      pipeline.get(redisKey);
+      pipeline.pTTL(redisKey);
+      
+      const results = await pipeline.exec();
+      
+      if (!results) {
+        return null;
+      }
+
+      const countStr = String(results[0] || '');
+      const ttl = Number(results[1]) || 0;
+
+      if (!countStr || ttl <= 0) {
+        return null;
+      }
+
+      return {
+        count: parseInt(countStr, 10),
+        resetTime: now + ttl,
+      };
+    } catch (error) {
+      console.error('Redis rate limit get error:', error);
+      return null;
+    }
+  }
+
+  async reset(key: string): Promise<void> {
+    const client = await redisManager.tryGetClient();
+    
+    if (!client) {
+      return;
+    }
+
+    const redisKey = `${this.keyPrefix}${key}`;
+
+    try {
+      await client.del(redisKey);
+    } catch (error) {
+      console.error('Redis rate limit reset error:', error);
+    }
+  }
+
+  async cleanup(): Promise<void> {
+    // Redis automatically handles cleanup via TTL
+    // No manual cleanup needed
+  }
+}
+
+/**
+ * Memory-backed rate limit storage for single-instance deployments
+ */
+export class MemoryRateLimitStorage implements RateLimitStorage {
+  private store: Map<string, { count: number; resetTime: number }> = new Map();
+  private cleanupInterval: NodeJS.Timeout | null = null;
+
+  constructor() {
+    // Start cleanup interval
+    this.startCleanup();
+  }
+
+  async increment(key: string, windowMs: number): Promise<{ count: number; resetTime: number }> {
+    const now = Date.now();
+    const existing = this.store.get(key);
+
+    if (existing && existing.resetTime > now) {
+      // Increment existing counter
+      existing.count++;
+      return existing;
+    } else {
+      // Create new counter
+      const data = {
+        count: 1,
+        resetTime: now + windowMs,
+      };
+      this.store.set(key, data);
+      return data;
+    }
+  }
+
+  async get(key: string): Promise<{ count: number; resetTime: number } | null> {
+    const now = Date.now();
+    const data = this.store.get(key);
+
+    if (!data || data.resetTime <= now) {
+      return null;
+    }
+
+    return data;
+  }
+
+  async reset(key: string): Promise<void> {
+    this.store.delete(key);
+  }
+
+  async cleanup(): Promise<void> {
+    const now = Date.now();
+    
+    for (const [key, data] of this.store.entries()) {
+      if (data.resetTime <= now) {
+        this.store.delete(key);
+      }
+    }
+  }
+
+  private startCleanup(): void {
+    // Run cleanup every 60 seconds
+    this.cleanupInterval = setInterval(() => {
+      this.cleanup().catch(console.error);
+    }, 60000);
+  }
+
+  stopCleanup(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+  }
 }
 
 // Subscription tiers for rate limiting
@@ -72,6 +262,12 @@ export function createRateLimit(options: RateLimitOptions) {
           
           // Enterprise tier gets unlimited access
           if (tier === 'enterprise' && tierLimit.limit === -1) {
+            // Still add headers to indicate unlimited access
+            res.set({
+              'X-RateLimit-Limit': 'unlimited',
+              'X-RateLimit-Remaining': 'unlimited',
+              'X-RateLimit-Reset': new Date(now + effectiveWindow).toISOString(),
+            });
             return next();
           }
         }
@@ -124,11 +320,14 @@ export function createRateLimit(options: RateLimitOptions) {
         const progressiveDelay = Math.min(exceedBy * 100, 2000); // Max 2 seconds
         await new Promise(resolve => setTimeout(resolve, progressiveDelay));
         
+        // Add standard rate limit headers
+        // Requirement 12.4: Add rate limit headers to responses
         res.set({
           'X-RateLimit-Limit': effectiveLimit.toString(),
           'X-RateLimit-Remaining': '0',
           'X-RateLimit-Reset': new Date(limitData.resetTime).toISOString(),
           'Retry-After': retryAfter.toString(),
+          'X-RateLimit-Policy': `${effectiveLimit};w=${Math.floor(effectiveWindow / 1000)}`,
         });
         
         return res.status(429).json({
@@ -140,11 +339,14 @@ export function createRateLimit(options: RateLimitOptions) {
         });
       }
 
-      // Add rate limit headers
+      // Add rate limit headers to successful responses
+      // Requirement 12.4: Add rate limit headers to responses
+      const remaining = Math.max(0, effectiveLimit - limitData.count);
       res.set({
         'X-RateLimit-Limit': effectiveLimit.toString(),
-        'X-RateLimit-Remaining': Math.max(0, effectiveLimit - limitData.count).toString(),
+        'X-RateLimit-Remaining': remaining.toString(),
         'X-RateLimit-Reset': new Date(limitData.resetTime).toISOString(),
+        'X-RateLimit-Policy': `${effectiveLimit};w=${Math.floor(effectiveWindow / 1000)}`,
       });
 
       // Handle response to potentially skip counting
@@ -222,71 +424,178 @@ export function clearRateLimitViolations(): void {
   violations.length = 0;
 }
 
-// Predefined rate limiters
+/**
+ * Get rate limit storage based on configuration
+ * Requirement 12.4: Use Redis for distributed rate limiting when available
+ */
+function getRateLimitStorage(): RateLimitStorage | undefined {
+  try {
+    const rateLimitConfig = config.getRateLimit();
+    const cacheConfig = config.getCache();
+    
+    // Use Redis storage if configured and available
+    if (rateLimitConfig.storage === 'redis' && redisManager.isConnected()) {
+      console.log('Using Redis-backed rate limiting');
+      return new RedisRateLimitStorage(cacheConfig.redis.keyPrefix + 'ratelimit:');
+    }
+    
+    // Fall back to memory storage
+    console.log('Using memory-backed rate limiting');
+    return new MemoryRateLimitStorage();
+  } catch (error) {
+    console.error('Error initializing rate limit storage:', error);
+    // Return memory storage as fallback
+    return new MemoryRateLimitStorage();
+  }
+}
 
-// Authentication rate limiter - IP-based for login/signup
-export const authRateLimit = createRateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 5, // 5 attempts per 15 minutes
-  keyGenerator: (req) => `auth:${req.ip || 'unknown'}`,
-  message: 'Too many authentication attempts. Please try again later.',
-});
+// Initialize storage backend
+let rateLimitStorage: RateLimitStorage | undefined;
 
-// Password reset rate limiter - email-based
-export const resetRateLimit = createRateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  maxRequests: 3, // 3 reset requests per hour
-  keyGenerator: (req) => {
-    const email = req.body?.email || 'unknown';
-    return `reset:${email}`;
-  },
-  message: 'Too many password reset requests. Please try again later.',
-});
+/**
+ * Initialize rate limit storage
+ * Should be called after Redis connection is established
+ */
+export function initializeRateLimitStorage(): void {
+  rateLimitStorage = getRateLimitStorage();
+}
 
-// API rate limiter with tier support - user-based
-export const apiRateLimit = createRateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  maxRequests: 100, // Default for free tier
-  keyGenerator: (req) => {
-    const user = (req as any).user;
-    return `api:${user?.claims?.sub || req.ip || 'unknown'}`;
-  },
-  tierLimits: {
-    free: { limit: 100, window: 60 * 60 * 1000 }, // 100 per hour
-    pro: { limit: 1000, window: 60 * 60 * 1000 }, // 1000 per hour
-    enterprise: { limit: -1, window: 0 }, // unlimited
-  },
-  message: 'API rate limit exceeded. Please upgrade your plan for higher limits.',
-});
+/**
+ * Get current rate limit storage
+ */
+export function getRateLimitStorageInstance(): RateLimitStorage | undefined {
+  if (!rateLimitStorage) {
+    rateLimitStorage = getRateLimitStorage();
+  }
+  return rateLimitStorage;
+}
 
-// Analysis rate limiter with tier support
-export const analysisRateLimit = createRateLimit({
-  windowMs: 24 * 60 * 60 * 1000, // 24 hours
-  maxRequests: 10, // Default for free tier
-  keyGenerator: (req) => {
-    const user = (req as any).user;
-    return `analysis:${user?.claims?.sub || req.ip || 'unknown'}`;
-  },
-  tierLimits: {
-    free: { limit: 10, window: 24 * 60 * 60 * 1000 }, // 10 per day
-    pro: { limit: 100, window: 24 * 60 * 60 * 1000 }, // 100 per day
-    enterprise: { limit: -1, window: 0 }, // unlimited
-  },
-  message: 'Analysis limit exceeded. Please upgrade your plan for more analyses.',
-});
+// Predefined rate limiters with production configuration
+// Requirement 12.4: Configure different limits for free/pro tiers
 
-// Search rate limiter
-export const searchRateLimit = createRateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  maxRequests: 30, // 30 searches per minute
-  keyGenerator: (req) => {
-    const user = (req as any).user;
-    return `search:${user?.claims?.sub || req.ip || 'unknown'}`;
-  },
-});
+/**
+ * Authentication rate limiter - IP-based for login/signup
+ * Protects against brute force attacks
+ */
+export function createAuthRateLimit() {
+  const rateLimitConfig = config.getRateLimit();
+  return createRateLimit({
+    windowMs: rateLimitConfig.auth.login.window,
+    maxRequests: rateLimitConfig.auth.login.limit,
+    keyGenerator: (req) => `auth:${req.ip || 'unknown'}`,
+    message: 'Too many authentication attempts. Please try again later.',
+    storage: getRateLimitStorageInstance(),
+  });
+}
 
-// General API rate limiter (legacy)
-export const generalApiRateLimit = createRateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  maxRequests: 100, // 100 requests per minute
-});
+/**
+ * Password reset rate limiter - email-based
+ * Prevents abuse of password reset functionality
+ */
+export function createResetRateLimit() {
+  const rateLimitConfig = config.getRateLimit();
+  return createRateLimit({
+    windowMs: rateLimitConfig.auth.reset.window,
+    maxRequests: rateLimitConfig.auth.reset.limit,
+    keyGenerator: (req) => {
+      const email = req.body?.email || 'unknown';
+      return `reset:${email}`;
+    },
+    message: 'Too many password reset requests. Please try again later.',
+    storage: getRateLimitStorageInstance(),
+  });
+}
+
+/**
+ * API rate limiter with tier support - user-based
+ * Requirement 12.4: Configure different limits for free/pro tiers
+ */
+export function createApiRateLimit() {
+  const rateLimitConfig = config.getRateLimit();
+  return createRateLimit({
+    windowMs: rateLimitConfig.api.free.window,
+    maxRequests: rateLimitConfig.api.free.limit,
+    keyGenerator: (req) => {
+      const user = (req as any).user;
+      return `api:${user?.claims?.sub || req.ip || 'unknown'}`;
+    },
+    tierLimits: {
+      free: { 
+        limit: rateLimitConfig.api.free.limit, 
+        window: rateLimitConfig.api.free.window 
+      },
+      pro: { 
+        limit: rateLimitConfig.api.pro.limit, 
+        window: rateLimitConfig.api.pro.window 
+      },
+      enterprise: { limit: -1, window: 0 }, // unlimited
+    },
+    message: 'API rate limit exceeded. Please upgrade your plan for higher limits.',
+    storage: getRateLimitStorageInstance(),
+  });
+}
+
+/**
+ * Analysis rate limiter with tier support
+ * Requirement 12.4: Configure different limits for free/pro tiers
+ */
+export function createAnalysisRateLimit() {
+  const rateLimitConfig = config.getRateLimit();
+  return createRateLimit({
+    windowMs: rateLimitConfig.analysis.free.window,
+    maxRequests: rateLimitConfig.analysis.free.limit,
+    keyGenerator: (req) => {
+      const user = (req as any).user;
+      return `analysis:${user?.claims?.sub || req.ip || 'unknown'}`;
+    },
+    tierLimits: {
+      free: { 
+        limit: rateLimitConfig.analysis.free.limit, 
+        window: rateLimitConfig.analysis.free.window 
+      },
+      pro: { 
+        limit: rateLimitConfig.analysis.pro.limit, 
+        window: rateLimitConfig.analysis.pro.window 
+      },
+      enterprise: { limit: -1, window: 0 }, // unlimited
+    },
+    message: 'Analysis limit exceeded. Please upgrade your plan for more analyses.',
+    storage: getRateLimitStorageInstance(),
+  });
+}
+
+/**
+ * Search rate limiter
+ * Prevents abuse of search functionality
+ */
+export function createSearchRateLimit() {
+  return createRateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    maxRequests: 30, // 30 searches per minute
+    keyGenerator: (req) => {
+      const user = (req as any).user;
+      return `search:${user?.claims?.sub || req.ip || 'unknown'}`;
+    },
+    storage: getRateLimitStorageInstance(),
+  });
+}
+
+/**
+ * General API rate limiter (legacy)
+ * Used for endpoints without specific rate limiting
+ */
+export function createGeneralApiRateLimit() {
+  return createRateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    maxRequests: 100, // 100 requests per minute
+    storage: getRateLimitStorageInstance(),
+  });
+}
+
+// Export lazy-initialized rate limiters
+export const authRateLimit = createAuthRateLimit();
+export const resetRateLimit = createResetRateLimit();
+export const apiRateLimit = createApiRateLimit();
+export const analysisRateLimit = createAnalysisRateLimit();
+export const searchRateLimit = createSearchRateLimit();
+export const generalApiRateLimit = createGeneralApiRateLimit();

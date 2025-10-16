@@ -123,16 +123,21 @@ async function performHealthChecks(): Promise<HealthStatus> {
   // Check CPU usage (Requirement 5.3)
   health.checks.cpu = checkCPU();
 
+  // Check job queue status (Requirement 9.4)
+  health.checks.queue = await checkJobQueue();
+
   // Determine overall health status (Requirement 5.4)
   // Database down = unhealthy
   // Redis down = degraded (non-critical)
   // High memory/CPU = degraded
+  // Job queue issues = degraded (non-critical)
   if (health.checks.database.status === 'unhealthy') {
     health.status = 'unhealthy';
   } else if (
     health.checks.redis.status === 'degraded' ||
     health.checks.memory.status === 'degraded' ||
-    health.checks.cpu.status === 'degraded'
+    health.checks.cpu.status === 'degraded' ||
+    health.checks.queue?.status === 'degraded'
   ) {
     health.status = 'degraded';
   }
@@ -336,19 +341,38 @@ async function checkAPI(): Promise<CheckResult> {
 
 /**
  * Check job queue health
- * Requirement 10.7: Job queue health check
+ * Requirement 9.4: Add job processing status to health check
+ * Requirement 9.5: Gracefully disable jobs when Redis unavailable
  */
 async function checkJobQueue(): Promise<CheckResult> {
   const startTime = Date.now();
   
   try {
+    // Check if Redis is enabled (required for job queue)
+    if (!redisManager.isRedisEnabled()) {
+      return {
+        status: 'healthy',
+        latency: Date.now() - startTime,
+        message: 'Job queue disabled (Redis not available)',
+        details: {
+          enabled: false,
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+        },
+      };
+    }
+
     // Check if job queue is initialized and get stats
     const stats = await jobQueue.getStats();
     const latency = Date.now() - startTime;
 
     // Check for concerning queue conditions
     const totalJobs = stats.waiting + stats.active + stats.delayed;
-    const failedRatio = stats.failed / (stats.completed + stats.failed || 1);
+    const totalProcessed = stats.completed + stats.failed;
+    const failedRatio = totalProcessed > 0 ? stats.failed / totalProcessed : 0;
 
     let status: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
     let message: string | undefined;
@@ -357,7 +381,7 @@ async function checkJobQueue(): Promise<CheckResult> {
     if (totalJobs > 1000) {
       status = 'degraded';
       message = `High queue depth: ${totalJobs} jobs`;
-    } else if (failedRatio > 0.1) {
+    } else if (failedRatio > 0.1 && totalProcessed > 10) {
       status = 'degraded';
       message = `High failure rate: ${(failedRatio * 100).toFixed(1)}%`;
     }
@@ -366,13 +390,22 @@ async function checkJobQueue(): Promise<CheckResult> {
       status,
       latency,
       message,
-      details: stats,
+      details: {
+        enabled: true,
+        ...stats,
+      },
     };
   } catch (error: any) {
+    // Job queue errors should not fail the health check
+    // The application can run without background jobs
     return {
-      status: 'unhealthy',
+      status: 'degraded',
       latency: Date.now() - startTime,
-      message: error.message || 'Job queue check failed',
+      message: `Job queue check failed: ${error.message || 'Unknown error'}`,
+      details: {
+        enabled: true,
+        error: error.message,
+      },
     };
   }
 }

@@ -1,20 +1,26 @@
 import { Request, Response, NextFunction } from 'express';
+import helmet from 'helmet';
 
 /**
- * HTTPS Enforcement Middleware
+ * HTTPS Enforcement and Security Headers Middleware
  * 
- * Redirects HTTP requests to HTTPS in production environments.
- * Skips redirect in development for local testing.
+ * Provides comprehensive security configuration including:
+ * - HTTPS enforcement in production
+ * - Security headers via Helmet.js
+ * - Content Security Policy (CSP)
+ * - HSTS headers
  */
 
 /**
  * Middleware to enforce HTTPS connections in production
+ * Requirement 12.1: HTTPS enforcement
  */
 export function enforceHTTPS(req: Request, res: Response, next: NextFunction): void {
   const isProduction = process.env.NODE_ENV === 'production';
+  const forceHttps = process.env.FORCE_HTTPS === 'true';
   
-  // Skip HTTPS enforcement in development
-  if (!isProduction) {
+  // Skip HTTPS enforcement in development unless explicitly enabled
+  if (!isProduction && !forceHttps) {
     return next();
   }
 
@@ -38,71 +44,142 @@ export function enforceHTTPS(req: Request, res: Response, next: NextFunction): v
 }
 
 /**
- * Security Headers Middleware
- * 
- * Adds security-related HTTP headers to all responses.
+ * Configure Helmet.js with appropriate security headers
+ * Requirements 12.2, 12.3: Security headers and HSTS
  */
 export function setSecurityHeaders(req: Request, res: Response, next: NextFunction): void {
   const isProduction = process.env.NODE_ENV === 'production';
+  const securityHeadersEnabled = process.env.SECURITY_HEADERS_ENABLED !== 'false';
+  const cspEnabled = process.env.CSP_ENABLED !== 'false';
+  const hstsMaxAge = parseInt(process.env.HSTS_MAX_AGE || '31536000', 10);
 
-  // Strict-Transport-Security (HSTS)
-  // Tells browsers to only use HTTPS for future requests
-  if (isProduction) {
-    res.setHeader(
-      'Strict-Transport-Security',
-      'max-age=31536000; includeSubDomains; preload'
-    );
+  // Skip security headers if explicitly disabled
+  if (!securityHeadersEnabled) {
+    return next();
   }
 
-  // X-Content-Type-Options
-  // Prevents MIME type sniffing
-  res.setHeader('X-Content-Type-Options', 'nosniff');
+  // Configure Content Security Policy directives
+  const cspDirectives: helmet.ContentSecurityPolicyOptions['directives'] = {
+    defaultSrc: ["'self'"],
+    scriptSrc: [
+      "'self'",
+      "'unsafe-inline'", // Required for inline scripts
+      "'unsafe-eval'", // Required for some libraries
+      'https://cdn.jsdelivr.net',
+      'https://accounts.google.com',
+      'https://apis.google.com',
+      'https://js.stripe.com',
+    ],
+    styleSrc: [
+      "'self'",
+      "'unsafe-inline'", // Required for styled-components and inline styles
+      'https://fonts.googleapis.com',
+    ],
+    fontSrc: [
+      "'self'",
+      'https://fonts.gstatic.com',
+      'data:',
+    ],
+    imgSrc: [
+      "'self'",
+      'data:',
+      'https:',
+      'blob:',
+    ],
+    connectSrc: [
+      "'self'",
+      'https://api.github.com',
+      'https://accounts.google.com',
+      'https://oauth2.googleapis.com',
+      'https://api.stripe.com',
+    ],
+    frameSrc: [
+      "'self'",
+      'https://accounts.google.com',
+      'https://js.stripe.com',
+      'https://hooks.stripe.com',
+    ],
+    objectSrc: ["'none'"],
+    baseUri: ["'self'"],
+    formAction: ["'self'"],
+    frameAncestors: ["'none'"],
+  };
 
-  // X-Frame-Options
-  // Prevents clickjacking attacks
-  res.setHeader('X-Frame-Options', 'DENY');
-
-  // X-XSS-Protection
-  // Enables browser XSS protection (legacy browsers)
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-
-  // Content-Security-Policy
-  // Restricts resource loading to prevent XSS and other attacks
-  const cspDirectives = [
-    "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://accounts.google.com https://apis.google.com https://js.stripe.com",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com data:",
-    "img-src 'self' data: https: blob:",
-    "connect-src 'self' https://api.github.com https://accounts.google.com https://oauth2.googleapis.com https://api.stripe.com",
-    "frame-src 'self' https://accounts.google.com https://js.stripe.com https://hooks.stripe.com",
-    "object-src 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    "frame-ancestors 'none'",
-    "upgrade-insecure-requests"
-  ];
-
-  // In development, allow more permissive CSP for hot reload
+  // In development, allow WebSocket connections and more permissive CSP
   if (!isProduction) {
-    cspDirectives[1] = "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://accounts.google.com https://apis.google.com https://js.stripe.com";
-    cspDirectives[5] = "connect-src 'self' ws: wss: https://api.github.com https://accounts.google.com https://oauth2.googleapis.com https://api.stripe.com";
-    // Remove upgrade-insecure-requests in development
-    cspDirectives.pop();
+    cspDirectives.connectSrc = [
+      "'self'",
+      'ws:',
+      'wss:',
+      'https://api.github.com',
+      'https://accounts.google.com',
+      'https://oauth2.googleapis.com',
+      'https://api.stripe.com',
+    ];
+  } else {
+    // In production, upgrade insecure requests
+    cspDirectives.upgradeInsecureRequests = [];
   }
 
-  res.setHeader('Content-Security-Policy', cspDirectives.join('; '));
+  // Apply Helmet middleware with configuration
+  const helmetMiddleware = helmet({
+    // Content Security Policy
+    contentSecurityPolicy: cspEnabled ? {
+      directives: cspDirectives,
+    } : false,
 
-  // Referrer-Policy
-  // Controls how much referrer information is sent
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    // Strict-Transport-Security (HSTS)
+    // Requirement 12.3: HSTS headers
+    hsts: isProduction ? {
+      maxAge: hstsMaxAge, // Default: 1 year
+      includeSubDomains: true,
+      preload: true,
+    } : false,
 
-  // Permissions-Policy (formerly Feature-Policy)
-  // Controls which browser features can be used
-  res.setHeader(
-    'Permissions-Policy',
-    'geolocation=(), microphone=(), camera=(), payment=()'
-  );
+    // X-Content-Type-Options: nosniff
+    noSniff: true,
 
-  next();
+    // X-Frame-Options: DENY
+    frameguard: {
+      action: 'deny',
+    },
+
+    // X-XSS-Protection: 1; mode=block (for legacy browsers)
+    xssFilter: true,
+
+    // Referrer-Policy
+    referrerPolicy: {
+      policy: 'strict-origin-when-cross-origin',
+    },
+
+    // X-DNS-Prefetch-Control
+    dnsPrefetchControl: {
+      allow: false,
+    },
+
+    // X-Download-Options: noopen
+    ieNoOpen: true,
+
+    // X-Permitted-Cross-Domain-Policies: none
+    permittedCrossDomainPolicies: {
+      permittedPolicies: 'none',
+    },
+  });
+
+  // Apply Helmet middleware
+  helmetMiddleware(req, res, (err) => {
+    if (err) {
+      console.error('Helmet middleware error:', err);
+      return next(err);
+    }
+
+    // Add additional custom headers not covered by Helmet
+    // Permissions-Policy (formerly Feature-Policy)
+    res.setHeader(
+      'Permissions-Policy',
+      'geolocation=(), microphone=(), camera=(), payment=()'
+    );
+
+    next();
+  });
 }
