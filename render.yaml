@@ -12,7 +12,7 @@ services:
     branch: main # Git branch to auto-deploy from
     
     # Build Configuration
-    buildCommand: npm ci --legacy-peer-deps && npm run build
+    buildCommand: bash render-build.sh
     startCommand: npm run start
     
     # Health Check Configuration
