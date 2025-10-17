@@ -94,10 +94,6 @@ app.use((req, res, next) => {
 
   const server = await registerRoutes(app);
 
-  // Import and use the enhanced error handler
-  const { createErrorHandler } = await import("./utils/errorHandler");
-  app.use(createErrorHandler());
-
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
@@ -106,6 +102,10 @@ app.use((req, res, next) => {
   } else {
     serveStatic(app);
   }
+
+  // Import and use the enhanced error handler AFTER static middleware
+  const { createErrorHandler } = await import("./utils/errorHandler");
+  app.use(createErrorHandler());
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
   // Other ports are firewalled. Default to 5000 if not specified.

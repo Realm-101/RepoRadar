@@ -146,10 +146,11 @@ export async function setupVite(app: Express, server: Server) {
 export function serveStatic(app: Express) {
   // In production, the bundled server is in dist/index.js
   // and the static files are in dist/public
-  const distPath = path.resolve(import.meta.dirname, "public");
+  // On Render, we need to look relative to the current working directory
+  const distPath = path.resolve(process.cwd(), "dist", "public");
   
-  // Fallback: if public doesn't exist next to the bundle, try relative to process.cwd()
-  const fallbackPath = path.resolve(process.cwd(), "dist", "public");
+  // Fallback: if dist/public doesn't exist, try relative to import.meta.dirname
+  const fallbackPath = path.resolve(import.meta.dirname, "public");
   const finalPath = fs.existsSync(distPath) ? distPath : fallbackPath;
 
   if (!fs.existsSync(finalPath)) {
