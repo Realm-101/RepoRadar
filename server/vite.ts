@@ -144,19 +144,27 @@ export async function setupVite(app: Express, server: Server) {
 }
 
 export function serveStatic(app: Express) {
+  // In production, the bundled server is in dist/index.js
+  // and the static files are in dist/public
   const distPath = path.resolve(import.meta.dirname, "public");
+  
+  // Fallback: if public doesn't exist next to the bundle, try relative to process.cwd()
+  const fallbackPath = path.resolve(process.cwd(), "dist", "public");
+  const finalPath = fs.existsSync(distPath) ? distPath : fallbackPath;
 
-  if (!fs.existsSync(distPath)) {
+  if (!fs.existsSync(finalPath)) {
     throw new Error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`,
+      `Could not find the build directory. Tried:\n  - ${distPath}\n  - ${fallbackPath}\nMake sure to build the client first`,
     );
   }
+  
+  log(`Serving static files from: ${finalPath}`);
 
   // Apply compression middleware
   app.use(configureCompression());
 
   // Serve static files with custom cache headers
-  app.use(express.static(distPath, {
+  app.use(express.static(finalPath, {
     etag: true,
     lastModified: true,
     setHeaders: (res: Response, filePath: string) => {
@@ -174,6 +182,6 @@ export function serveStatic(app: Express) {
 
     // Set cache headers for index.html
     setCacheHeaders(res, 'index.html');
-    res.sendFile(path.resolve(distPath, "index.html"));
+    res.sendFile(path.resolve(finalPath, "index.html"));
   });
 }
