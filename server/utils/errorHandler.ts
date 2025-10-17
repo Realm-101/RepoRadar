@@ -108,7 +108,7 @@ export function createErrorHandler() {
       );
     } else {
       // Unknown error - convert to generic AppError
-      appError = AppError.fromError(err);
+      appError = AppError.fromError(err as Error);
     }
 
     // Log error details for debugging

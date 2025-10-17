@@ -8,7 +8,7 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./neonAuth";
 import { githubService } from "./github";
 import { analyzeRepository, findSimilarRepositories, findSimilarByFunctionality, askAI, generateAIRecommendations } from "./gemini";
-import { insertRepositorySchema, insertAnalysisSchema, insertSavedRepositorySchema, repositoryTags } from "@shared/schema";
+import { insertRepositorySchema, insertAnalysisSchema, insertSavedRepositorySchema, repositoryTags, type User } from "@shared/schema";
 import { db } from "./db";
 import { eq, sql } from "drizzle-orm";
 import { 
@@ -56,19 +56,29 @@ import {
 } from "./middleware/featureFlags";
 import { sessionSecurityMiddleware } from "./middleware/sessionValidation";
 
-interface AuthenticatedRequest extends Request {
-  user: {
-    claims: {
-      sub: string;
-      email?: string;
-      first_name?: string;
-      last_name?: string;
-      profile_image_url?: string;
-    };
-    access_token: string;
-    refresh_token?: string;
-    expires_at: number;
+// Authenticated user type
+type AuthenticatedUser = {
+  claims: {
+    sub: string;
+    email?: string;
+    first_name?: string;
+    last_name?: string;
+    profile_image_url?: string;
   };
+  access_token: string;
+  refresh_token?: string;
+  expires_at: number;
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
+  subscriptionTier?: string;
+};
+
+// Helper to get authenticated user from request
+function getAuthUser(req: Request): AuthenticatedUser {
+  if (!req.user) {
+    throw new Error('Request is not authenticated');
+  }
+  return req.user as AuthenticatedUser;
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -246,8 +256,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { name, category, properties } = req.body;
       const sessionId = req.headers['x-session-id'] as string || `session_${Date.now()}`;
-      const authReq = req as AuthenticatedRequest;
-      const userId = authReq.user?.claims?.sub;
+      const user = req.user as AuthenticatedUser | undefined;
+      const userId = user?.claims?.sub;
 
       await analyticsService.trackEvent({
         name,
@@ -291,11 +301,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  app.get('/api/auth/user', isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-      res.json(user);
+      const user = getAuthUser(req);
+      const userId = user.claims.sub;
+      const userData = await storage.getUser(userId);
+      res.json(userData);
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
@@ -303,18 +314,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Update user profile
-  app.put('/api/user/profile', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  app.put('/api/user/profile', isAuthenticated, async (req, res) => {
     try {
       console.log('[Profile Update] Request received');
       console.log('[Profile Update] User:', req.user);
       console.log('[Profile Update] Session:', (req as any).session);
       
-      if (!req.user || !req.user.claims || !req.user.claims.sub) {
+      const authUser = getAuthUser(req);
+      if (!authUser || !authUser.claims || !authUser.claims.sub) {
         console.error('[Profile Update] No user in request');
         return res.status(401).json({ error: "Not authenticated" });
       }
       
-      const userId = req.user.claims.sub;
+      const userId = authUser.claims.sub;
       const { firstName, lastName, bio, profileImageUrl, githubToken } = req.body;
       
       console.log('[Profile Update] Updating profile for user:', userId);
@@ -336,9 +348,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Change user password
-  app.post('/api/user/change-password', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  app.post('/api/user/change-password', isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const authUser = getAuthUser(req);
+      const userId = authUser.claims.sub;
       const { currentPassword, newPassword } = req.body;
       
       if (!currentPassword || !newPassword) {
@@ -786,10 +799,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   // Analytics Dashboard endpoint
-  app.get('/api/analytics/dashboard', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  app.get('/api/analytics/dashboard', isAuthenticated, async (req, res) => {
     try {
       // Extract userId with fallback for both session-based and token-based auth
-      const userId = req.user?.claims?.sub || (req.session as any)?.user?.id;
+      const authUser = getAuthUser(req);
+      const userId = authUser.claims.sub;
       
       // Validate userId presence
       if (!userId) {
@@ -953,10 +967,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Advanced Analytics endpoint
-  app.get('/api/analytics/advanced', isAuthenticated, checkFeatureAccess('advanced_analytics'), asyncHandler(async (req: AuthenticatedRequest, res) => {
+  app.get('/api/analytics/advanced', isAuthenticated, checkFeatureAccess('advanced_analytics'), asyncHandler(async (req, res) => {
     try {
       // Extract userId for logging and validation
-      const userId = req.user?.claims?.sub;
+      const authUser = getAuthUser(req);
+      const userId = authUser.claims.sub;
       
       if (!userId) {
         console.error('[Advanced Analytics] No userId found in authenticated request');
@@ -1003,7 +1018,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }));
 
   // Stripe subscription endpoint
-  app.post('/api/create-subscription', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  app.post('/api/create-subscription', isAuthenticated, async (req, res) => {
     try {
       // Check if Stripe is enabled
       if (!isStripeEnabled()) {
@@ -1013,8 +1028,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { plan } = req.body;
-      const userId = req.user.claims.sub;
-      const userEmail = req.user.claims.email;
+      const authUser = getAuthUser(req);
+      const userId = authUser.claims.sub;
+      const userEmail = authUser.claims.email;
 
       if (!plan || !SUBSCRIPTION_PLANS[plan as keyof typeof SUBSCRIPTION_PLANS]) {
         return res.status(400).json({ error: "Invalid subscription plan" });
@@ -1038,12 +1054,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         stripeSubscriptionId: subscription.id,
         subscriptionTier: plan,
         subscriptionStatus: subscription.status,
-        subscriptionEndDate: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
+        subscriptionEndDate: (subscription as any).current_period_end ? new Date((subscription as any).current_period_end * 1000) : null,
       });
 
       // Return client secret for payment
       const invoice = subscription.latest_invoice as Stripe.Invoice | null;
-      const paymentIntent = invoice?.payment_intent as Stripe.PaymentIntent | null;
+      const paymentIntent = (invoice as any)?.payment_intent as Stripe.PaymentIntent | null;
 
       res.json({
         subscriptionId: subscription.id,
@@ -1061,21 +1077,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Subscription status endpoint
-  app.get('/api/subscription/status', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  app.get('/api/subscription/status', isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const authUser = getAuthUser(req);
+      const userId = authUser.claims.sub;
+      const dbUser = await storage.getUser(userId);
 
-      if (!user) {
+      if (!dbUser) {
         return res.status(404).json({ error: "User not found" });
       }
 
       res.json({
-        tier: user.subscriptionTier || 'free',
-        status: user.subscriptionStatus || 'inactive',
-        currentPeriodEnd: user.subscriptionEndDate,
+        tier: dbUser.subscriptionTier || 'free',
+        status: dbUser.subscriptionStatus || 'inactive',
+        currentPeriodEnd: dbUser.subscriptionEndDate,
         cancelAtPeriodEnd: false, // TODO: Get from Stripe if needed
-        stripeCustomerId: user.stripeCustomerId,
+        stripeCustomerId: dbUser.stripeCustomerId,
       });
     } catch (error) {
       console.error("Error fetching subscription status:", error);
@@ -1084,14 +1101,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Subscription invoices endpoint
-  app.get('/api/subscription/invoices', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  app.get('/api/subscription/invoices', isAuthenticated, async (req, res) => {
     try {
       if (!isStripeEnabled() || !stripe) {
         return res.json([]);
       }
 
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const user = getAuthUser(req); const userId = user.claims.sub;const dbUser = await storage.getUser(userId);
 
       if (!user || !user.stripeCustomerId) {
         return res.json([]);
@@ -1122,14 +1138,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Subscription cancellation endpoint
-  app.post('/api/subscription/cancel', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  app.post('/api/subscription/cancel', isAuthenticated, async (req, res) => {
     try {
       if (!isStripeEnabled() || !stripe) {
         return res.status(503).json({ error: "Payment processing is currently unavailable" });
       }
 
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const user = getAuthUser(req); const userId = user.claims.sub;const dbUser = await storage.getUser(userId);
 
       if (!user || !user.stripeSubscriptionId) {
         return res.status(400).json({ error: "No active subscription found" });
@@ -1143,8 +1158,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({ 
         success: true,
-        cancelAtPeriodEnd: subscription.cancel_at_period_end,
-        currentPeriodEnd: subscription.current_period_end,
+        cancelAtPeriodEnd: (subscription as any).cancel_at_period_end,
+        currentPeriodEnd: (subscription as any).current_period_end,
       });
     } catch (error) {
       console.error("Error cancelling subscription:", error);
@@ -1156,7 +1171,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Stripe checkout session endpoint
-  app.post('/api/subscription/checkout', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  app.post('/api/subscription/checkout', isAuthenticated, async (req, res) => {
     try {
       // Check if Stripe is enabled
       if (!isStripeEnabled()) {
@@ -1166,8 +1181,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { priceId } = req.body;
-      const userId = req.user.claims.sub;
-      const userEmail = req.user.claims.email;
+      const user = getAuthUser(req);
+      const userId = user.claims.sub;
+      const userEmail = user.claims.email;
 
       // Validate inputs
       if (!priceId) {
@@ -1194,7 +1210,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Update user with customer ID if not already set
       if (session.customer && typeof session.customer === 'string') {
         const user = await storage.getUser(userId);
-        if (!user.stripeCustomerId) {
+        if (user && !user.stripeCustomerId) {
           await storage.updateUserStripeCustomerId(userId, session.customer);
         }
       }
@@ -1275,7 +1291,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               stripeSubscriptionId: subscription.id,
               subscriptionTier: tier,
               subscriptionStatus: subscription.status,
-              subscriptionEndDate: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
+              subscriptionEndDate: (subscription as any).current_period_end ? new Date((subscription as any).current_period_end * 1000) : null,
             });
 
             // Log event
@@ -1315,7 +1331,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             await storage.updateUserSubscription(user.id, {
               subscriptionTier: tier,
               subscriptionStatus: subscription.status,
-              subscriptionEndDate: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
+              subscriptionEndDate: (subscription as any).current_period_end ? new Date((subscription as any).current_period_end * 1000) : null,
             });
 
             // Log event
@@ -1445,8 +1461,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/bookmarks', 
     isAuthenticated, 
     checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
-    asyncHandler(async (req: AuthenticatedRequest, res) => {
-      const userId = req.user.claims.sub;
+    asyncHandler(async (req, res) => {
+      const user = getAuthUser(req); const userId = user.claims.sub;
       
       // Parse pagination parameters
       const page = parseInt(req.query.page as string) || 1;
@@ -1495,8 +1511,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/bookmarks',
     isAuthenticated,
     checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
-    asyncHandler(async (req: AuthenticatedRequest, res) => {
-      const userId = req.user.claims.sub;
+    asyncHandler(async (req, res) => {
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { repositoryId, notes } = req.body;
       
       // Validate required fields
@@ -1544,8 +1560,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/bookmarks/:repositoryId',
     isAuthenticated,
     checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
-    asyncHandler(async (req: AuthenticatedRequest, res) => {
-      const userId = req.user.claims.sub;
+    asyncHandler(async (req, res) => {
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { repositoryId } = req.params;
       
       if (!repositoryId) {
@@ -1580,8 +1596,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/tags',
     isAuthenticated,
     checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
-    asyncHandler(async (req: AuthenticatedRequest, res) => {
-      const userId = req.user.claims.sub;
+    asyncHandler(async (req, res) => {
+      const user = getAuthUser(req); const userId = user.claims.sub;
       
       // Parse pagination parameters
       const page = parseInt(req.query.page as string) || 1;
@@ -1637,8 +1653,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/tags',
     isAuthenticated,
     checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
-    asyncHandler(async (req: AuthenticatedRequest, res) => {
-      const userId = req.user.claims.sub;
+    asyncHandler(async (req, res) => {
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { name, color } = req.body;
       
       // Validate tag name
@@ -1695,8 +1711,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/tags/:tagId',
     isAuthenticated,
     checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
-    asyncHandler(async (req: AuthenticatedRequest, res) => {
-      const userId = req.user.claims.sub;
+    asyncHandler(async (req, res) => {
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const tagId = parseInt(req.params.tagId, 10);
       
       if (isNaN(tagId)) {
@@ -1737,8 +1753,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/repositories/:id/tags',
     isAuthenticated,
     checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
-    asyncHandler(async (req: AuthenticatedRequest, res) => {
-      const userId = req.user.claims.sub;
+    asyncHandler(async (req, res) => {
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const repositoryId = req.params.id;
       const { tagId } = req.body;
       
@@ -1811,8 +1827,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/repositories/:id/tags',
     isAuthenticated,
     checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
-    asyncHandler(async (req: AuthenticatedRequest, res) => {
-      const userId = req.user.claims.sub;
+    asyncHandler(async (req, res) => {
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const repositoryId = req.params.id;
       
       // Validate inputs
@@ -1835,8 +1851,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/repositories/:id/tags/:tagId',
     isAuthenticated,
     checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
-    asyncHandler(async (req: AuthenticatedRequest, res) => {
-      const userId = req.user.claims.sub;
+    asyncHandler(async (req, res) => {
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const repositoryId = req.params.id;
       const tagId = parseInt(req.params.tagId, 10);
       
@@ -1885,8 +1901,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/user/preferences',
     isAuthenticated,
     checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
-    asyncHandler(async (req: AuthenticatedRequest, res) => {
-      const userId = req.user.claims.sub;
+    asyncHandler(async (req, res) => {
+      const user = getAuthUser(req); const userId = user.claims.sub;
       
       // Get preferences (creates defaults if none exist)
       const preferences = await storage.getUserPreferences(userId);
@@ -1904,8 +1920,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put('/api/user/preferences',
     isAuthenticated,
     checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
-    asyncHandler(async (req: AuthenticatedRequest, res) => {
-      const userId = req.user.claims.sub;
+    asyncHandler(async (req, res) => {
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const {
         preferredLanguages,
         preferredTopics,
@@ -2068,8 +2084,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
     geminiRateLimiter(), // Gemini-specific rate limiting
     apiRateLimit, // General API rate limiting
-    asyncHandler(async (req: AuthenticatedRequest, res) => {
-      const userId = req.user.claims.sub;
+    asyncHandler(async (req, res) => {
+      const user = getAuthUser(req); const userId = user.claims.sub;
       
       // Check if Redis is available for caching
       const { redisManager } = await import('./redis');
@@ -2176,8 +2192,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/recommendations/dismiss',
     isAuthenticated,
     checkFeatureAccess('advanced_analytics'), // Pro/Enterprise only
-    asyncHandler(async (req: AuthenticatedRequest, res) => {
-      const userId = req.user.claims.sub;
+    asyncHandler(async (req, res) => {
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { repositoryId } = req.body;
       
       // Validate input
@@ -2358,9 +2374,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
 
     // Store analysis
+    const authUser = req.user ? getAuthUser(req) : null;
     const analysisData = {
       repositoryId: repository.id,
-      userId: (req as AuthenticatedRequest).user?.claims?.sub,
+      userId: authUser?.claims?.sub,
       ...analysisResult,
     };
     
@@ -2459,9 +2476,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }));
 
   // Reanalyze repository endpoint
-  app.post('/api/repositories/:id/reanalyze', isAuthenticated, checkTierLimit('analysis'), validateParams(repositoryIdSchema), asyncHandler(async (req: AuthenticatedRequest, res) => {
+  app.post('/api/repositories/:id/reanalyze', isAuthenticated, checkTierLimit('analysis'), validateParams(repositoryIdSchema), asyncHandler(async (req, res) => {
     const { id: repositoryId } = req.params;
-    const userId = req.user.claims.sub;
+    const user = getAuthUser(req); const userId = user.claims.sub;
 
     // Check if repository exists
     const repository = await storage.getRepository(repositoryId);
@@ -2569,7 +2586,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }));
 
   // Recent repositories (must be before :id route)
-  app.get('/api/repositories/recent', repositoryPagination, async (req: Request & { pagination: { limit: number; offset: number } }, res: Response & { paginate: (data: unknown[], total: number) => unknown }) => {
+  app.get('/api/repositories/recent', repositoryPagination, async (req: any, res: any) => {
     try {
       const { limit, offset } = req.pagination;
       
@@ -2770,9 +2787,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const similar = await storage.getSimilarRepositories(id);
       
       let isSaved = false;
-      const authenticatedReq = req as Partial<AuthenticatedRequest>;
-      if (authenticatedReq.user?.claims?.sub) {
-        isSaved = await storage.isRepositorySaved(authenticatedReq.user.claims.sub, id);
+      const user = req.user as AuthenticatedUser | undefined;
+      if (user?.claims?.sub) {
+        isSaved = await storage.isRepositorySaved(user.claims.sub, id);
       }
 
       res.json({
@@ -3280,8 +3297,8 @@ Please review the changes carefully before merging.`;
   }));
 
   // Save code review
-  app.post('/api/code-review/save', isAuthenticated, asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const userId = req.user.claims.sub;
+  app.post('/api/code-review/save', isAuthenticated, asyncHandler(async (req, res) => {
+    const user = getAuthUser(req); const userId = user.claims.sub;
     const { type, content, repositoryName, repositoryUrl, result } = req.body;
     
     if (!result) {
@@ -3310,8 +3327,8 @@ Please review the changes carefully before merging.`;
   }));
 
   // Get user's code reviews
-  app.get('/api/code-review/history', isAuthenticated, asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const userId = req.user.claims.sub;
+  app.get('/api/code-review/history', isAuthenticated, asyncHandler(async (req, res) => {
+    const user = getAuthUser(req); const userId = user.claims.sub;
     const limit = parseInt(req.query.limit as string) || 50;
     
     const reviews = await storage.getUserCodeReviews(userId, limit);
@@ -3319,8 +3336,8 @@ Please review the changes carefully before merging.`;
   }));
 
   // Get specific code review
-  app.get('/api/code-review/:id', isAuthenticated, asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const userId = req.user.claims.sub;
+  app.get('/api/code-review/:id', isAuthenticated, asyncHandler(async (req, res) => {
+    const user = getAuthUser(req); const userId = user.claims.sub;
     const reviewId = req.params.id;
     
     const review = await storage.getCodeReview(reviewId, userId);
@@ -3333,8 +3350,8 @@ Please review the changes carefully before merging.`;
   }));
 
   // Delete code review
-  app.delete('/api/code-review/:id', isAuthenticated, asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const userId = req.user.claims.sub;
+  app.delete('/api/code-review/:id', isAuthenticated, asyncHandler(async (req, res) => {
+    const user = getAuthUser(req); const userId = user.claims.sub;
     const reviewId = req.params.id;
     
     await storage.deleteCodeReview(reviewId, userId);
@@ -3342,7 +3359,7 @@ Please review the changes carefully before merging.`;
   }));
 
   // Recent analyses (all - public)
-  app.get('/api/analyses/recent', analysisPagination, async (req: Request & { pagination: { limit: number; offset: number } }, res: Response & { paginate: (data: unknown[], total: number) => unknown }) => {
+  app.get('/api/analyses/recent', analysisPagination, async (req: any, res: any) => {
     try {
       const { limit, offset } = req.pagination;
       
@@ -3362,9 +3379,9 @@ Please review the changes carefully before merging.`;
   });
 
   // User's recent analyses (authenticated)
-  app.get('/api/analyses/user/recent', isAuthenticated, async (req: AuthenticatedRequest, res) => {
+  app.get('/api/analyses/user/recent', isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       
       // Get user's recent analyses (limit to 10)
       const analyses = await storage.getUserAnalyses(userId);
@@ -3380,9 +3397,9 @@ Please review the changes carefully before merging.`;
   });
 
   // Saved repositories (protected routes with API rate limiting)
-  app.post('/api/saved-repositories', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
+  app.post('/api/saved-repositories', isAuthenticated, apiRateLimit, async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { repositoryId } = req.body;
       
       if (!repositoryId) {
@@ -3400,9 +3417,9 @@ Please review the changes carefully before merging.`;
     }
   });
 
-  app.delete('/api/saved-repositories/:repositoryId', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
+  app.delete('/api/saved-repositories/:repositoryId', isAuthenticated, apiRateLimit, async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { repositoryId } = req.params;
       
       await storage.unsaveRepository(userId, repositoryId);
@@ -3413,9 +3430,9 @@ Please review the changes carefully before merging.`;
     }
   });
 
-  app.get('/api/saved-repositories', isAuthenticated, apiRateLimit, repositoryPagination, async (req: AuthenticatedRequest & { pagination: { limit: number; offset: number } }, res: Response & { paginate: (data: unknown[], total: number) => unknown }) => {
+  app.get('/api/saved-repositories', isAuthenticated, apiRateLimit, repositoryPagination, async (req: any, res: any) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { limit, offset } = req.pagination;
       
       // Get total count for pagination metadata
@@ -3434,12 +3451,11 @@ Please review the changes carefully before merging.`;
   });
 
   // User Profile & Preferences Routes (Protected - Pro/Enterprise only with API rate limiting)
-  app.get('/api/user/preferences', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
+  app.get('/api/user/preferences', isAuthenticated, apiRateLimit, async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const user = getAuthUser(req); const userId = user.claims.sub;const dbUser = await storage.getUser(userId);
       
-      if (!user || (user.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
+      if (!dbUser || (dbUser.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
         return res.status(403).json({ message: "This feature is available for Pro and Enterprise users only" });
       }
 
@@ -3451,12 +3467,11 @@ Please review the changes carefully before merging.`;
     }
   });
 
-  app.put('/api/user/preferences', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
+  app.put('/api/user/preferences', isAuthenticated, apiRateLimit, async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const user = getAuthUser(req); const userId = user.claims.sub;const dbUser = await storage.getUser(userId);
       
-      if (!user || (user.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
+      if (!dbUser || (dbUser.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
         return res.status(403).json({ message: "This feature is available for Pro and Enterprise users only" });
       }
 
@@ -3469,12 +3484,11 @@ Please review the changes carefully before merging.`;
   });
 
   // Bookmarks Routes (with API rate limiting)
-  app.get('/api/user/bookmarks', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
+  app.get('/api/user/bookmarks', isAuthenticated, apiRateLimit, async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const user = getAuthUser(req); const userId = user.claims.sub;const dbUser = await storage.getUser(userId);
       
-      if (!user || (user.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
+      if (!dbUser || (dbUser.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
         return res.status(403).json({ message: "This feature is available for Pro and Enterprise users only" });
       }
 
@@ -3486,12 +3500,11 @@ Please review the changes carefully before merging.`;
     }
   });
 
-  app.post('/api/user/bookmarks', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
+  app.post('/api/user/bookmarks', isAuthenticated, apiRateLimit, async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const user = getAuthUser(req); const userId = user.claims.sub;const dbUser = await storage.getUser(userId);
       
-      if (!user || (user.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
+      if (!dbUser || (dbUser.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
         return res.status(403).json({ message: "This feature is available for Pro and Enterprise users only" });
       }
 
@@ -3508,12 +3521,11 @@ Please review the changes carefully before merging.`;
     }
   });
 
-  app.delete('/api/user/bookmarks/:repositoryId', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
+  app.delete('/api/user/bookmarks/:repositoryId', isAuthenticated, apiRateLimit, async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const user = getAuthUser(req); const userId = user.claims.sub;const dbUser = await storage.getUser(userId);
       
-      if (!user || (user.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
+      if (!dbUser || (dbUser.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
         return res.status(403).json({ message: "This feature is available for Pro and Enterprise users only" });
       }
 
@@ -3526,12 +3538,11 @@ Please review the changes carefully before merging.`;
   });
 
   // Tags Routes (with API rate limiting)
-  app.get('/api/user/tags', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
+  app.get('/api/user/tags', isAuthenticated, apiRateLimit, async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const user = getAuthUser(req); const userId = user.claims.sub;const dbUser = await storage.getUser(userId);
       
-      if (!user || (user.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
+      if (!dbUser || (dbUser.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
         return res.status(403).json({ message: "This feature is available for Pro and Enterprise users only" });
       }
 
@@ -3543,12 +3554,11 @@ Please review the changes carefully before merging.`;
     }
   });
 
-  app.post('/api/user/tags', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
+  app.post('/api/user/tags', isAuthenticated, apiRateLimit, async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const user = getAuthUser(req); const userId = user.claims.sub;const dbUser = await storage.getUser(userId);
       
-      if (!user || (user.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
+      if (!dbUser || (dbUser.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
         return res.status(403).json({ message: "This feature is available for Pro and Enterprise users only" });
       }
 
@@ -3561,12 +3571,11 @@ Please review the changes carefully before merging.`;
     }
   });
 
-  app.post('/api/repositories/:repositoryId/tags', isAuthenticated, apiRateLimit, async (req: AuthenticatedRequest, res) => {
+  app.post('/api/repositories/:repositoryId/tags', isAuthenticated, apiRateLimit, async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const user = getAuthUser(req); const userId = user.claims.sub;const dbUser = await storage.getUser(userId);
       
-      if (!user || (user.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
+      if (!dbUser || (dbUser.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
         return res.status(403).json({ message: "This feature is available for Pro and Enterprise users only" });
       }
 
@@ -3581,10 +3590,9 @@ Please review the changes carefully before merging.`;
   // Collections Routes (with API rate limiting)
   app.get('/api/user/collections', isAuthenticated, apiRateLimit, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const user = getAuthUser(req); const userId = user.claims.sub;const dbUser = await storage.getUser(userId);
       
-      if (!user || (user.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
+      if (!dbUser || (dbUser.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
         return res.status(403).json({ message: "This feature is available for Pro and Enterprise users only" });
       }
 
@@ -3597,14 +3605,13 @@ Please review the changes carefully before merging.`;
 
   app.post('/api/user/collections', isAuthenticated, apiRateLimit, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const user = getAuthUser(req); const userId = user.claims.sub;const dbUser = await storage.getUser(userId);
       
-      if (!user || (user.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
+      if (!dbUser || (dbUser.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
         return res.status(403).json({ message: "This feature is available for Pro and Enterprise users only" });
       }
 
-      const collection = await storage.createCollection(userId, req.body);
+      const collection = await storage.createCollection({ ...req.body, userId });
       res.json(collection);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -3613,10 +3620,9 @@ Please review the changes carefully before merging.`;
 
   app.post('/api/collections/:collectionId/items', isAuthenticated, apiRateLimit, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const user = getAuthUser(req); const userId = user.claims.sub;const dbUser = await storage.getUser(userId);
       
-      if (!user || (user.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
+      if (!dbUser || (dbUser.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
         return res.status(403).json({ message: "This feature is available for Pro and Enterprise users only" });
       }
 
@@ -3635,10 +3641,9 @@ Please review the changes carefully before merging.`;
   // AI Recommendations Route
   app.get('/api/user/recommendations', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const user = getAuthUser(req); const userId = user.claims.sub;const dbUser = await storage.getUser(userId);
       
-      if (!user || (user.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
+      if (!dbUser || (dbUser.subscriptionTier !== 'pro' && user.subscriptionTier !== 'enterprise')) {
         return res.status(403).json({ message: "This feature is available for Pro and Enterprise users only" });
       }
 
@@ -3658,7 +3663,7 @@ Please review the changes carefully before merging.`;
   // Repository Tracking Endpoints
   app.post('/api/repositories/:repositoryId/track', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { repositoryId } = req.params;
       const { trackingType = 'all' } = req.body;
       
@@ -3689,7 +3694,7 @@ Please review the changes carefully before merging.`;
 
   app.delete('/api/repositories/:repositoryId/track', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { repositoryId } = req.params;
       
       await storage.untrackRepository(userId, repositoryId);
@@ -3701,7 +3706,7 @@ Please review the changes carefully before merging.`;
 
   app.get('/api/user/tracked-repositories', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const tracked = await storage.getTrackedRepositories(userId);
       res.json(tracked);
     } catch (error: any) {
@@ -3712,7 +3717,7 @@ Please review the changes carefully before merging.`;
   // Notifications Endpoints
   app.get('/api/notifications', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { unreadOnly = false } = req.query;
       
       const notifications = await storage.getUserNotifications(
@@ -3727,7 +3732,7 @@ Please review the changes carefully before merging.`;
 
   app.put('/api/notifications/:notificationId/read', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { notificationId } = req.params;
       
       await storage.markNotificationAsRead(parseInt(notificationId), userId);
@@ -3739,7 +3744,7 @@ Please review the changes carefully before merging.`;
 
   app.delete('/api/notifications/:notificationId', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { notificationId } = req.params;
       
       await storage.deleteNotification(parseInt(notificationId), userId);
@@ -3751,7 +3756,7 @@ Please review the changes carefully before merging.`;
 
   app.put('/api/notifications/mark-all-read', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       await storage.markAllNotificationsAsRead(userId);
       res.json({ message: "All notifications marked as read" });
     } catch (error: any) {
@@ -3772,7 +3777,7 @@ Please review the changes carefully before merging.`;
 
   app.post('/api/repositories/:repositoryId/comments', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { repositoryId } = req.params;
       const { content, parentId } = req.body;
       
@@ -3791,7 +3796,7 @@ Please review the changes carefully before merging.`;
 
   app.put('/api/comments/:commentId', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { commentId } = req.params;
       const { content } = req.body;
       
@@ -3804,7 +3809,7 @@ Please review the changes carefully before merging.`;
 
   app.delete('/api/comments/:commentId', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { commentId } = req.params;
       
       await storage.deleteComment(parseInt(commentId), userId);
@@ -3816,7 +3821,7 @@ Please review the changes carefully before merging.`;
 
   app.post('/api/comments/:commentId/like', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { commentId } = req.params;
       
       await storage.likeComment(parseInt(commentId), userId);
@@ -3828,7 +3833,7 @@ Please review the changes carefully before merging.`;
 
   app.delete('/api/comments/:commentId/like', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { commentId } = req.params;
       
       await storage.unlikeComment(parseInt(commentId), userId);
@@ -3858,7 +3863,7 @@ Please review the changes carefully before merging.`;
 
   app.post('/api/collections', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { name, description, color } = req.body;
       
       if (!name || !name.trim()) {
@@ -3880,7 +3885,7 @@ Please review the changes carefully before merging.`;
 
   app.delete('/api/collections/:collectionId', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { collectionId } = req.params;
       
       await storage.deleteCollection(parseInt(collectionId), userId);
@@ -3892,7 +3897,7 @@ Please review the changes carefully before merging.`;
 
   app.post('/api/collections/:collectionId/repositories', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { collectionId } = req.params;
       const { repositoryId } = req.body;
       
@@ -3914,7 +3919,7 @@ Please review the changes carefully before merging.`;
 
   app.delete('/api/collections/:collectionId/repositories/:repositoryId', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { collectionId, repositoryId } = req.params;
       
       await storage.removeRepositoryFromCollection(
@@ -3948,7 +3953,7 @@ Please review the changes carefully before merging.`;
 
   app.post('/api/repositories/:repositoryId/ratings', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { repositoryId } = req.params;
       const { rating, review } = req.body;
       
@@ -3971,7 +3976,7 @@ Please review the changes carefully before merging.`;
 
   app.delete('/api/ratings/:ratingId', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { ratingId } = req.params;
       
       await storage.deleteRating(parseInt(ratingId), userId);
@@ -3983,7 +3988,7 @@ Please review the changes carefully before merging.`;
 
   app.post('/api/ratings/:ratingId/helpful', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { ratingId } = req.params;
       
       await storage.markRatingHelpful(parseInt(ratingId), userId);
@@ -3995,7 +4000,7 @@ Please review the changes carefully before merging.`;
 
   app.delete('/api/ratings/:ratingId/helpful', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { ratingId } = req.params;
       
       await storage.unmarkRatingHelpful(parseInt(ratingId), userId);
@@ -4008,7 +4013,7 @@ Please review the changes carefully before merging.`;
   // API Key Management
   app.get('/api/developer/keys', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const keys = await storage.getUserApiKeys(userId);
       res.json(keys);
     } catch (error) {
@@ -4019,7 +4024,7 @@ Please review the changes carefully before merging.`;
 
   app.post('/api/developer/keys', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { name, description, permissions, expiresAt } = req.body;
       
       // Generate a secure API key
@@ -4045,7 +4050,7 @@ Please review the changes carefully before merging.`;
 
   app.delete('/api/developer/keys/:id', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const keyId = parseInt(req.params.id);
       
       await storage.deleteApiKey(keyId, userId);
@@ -4070,7 +4075,7 @@ Please review the changes carefully before merging.`;
   // Webhook Management
   app.get('/api/developer/webhooks', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const webhooks = await storage.getUserWebhooks(userId);
       res.json(webhooks);
     } catch (error) {
@@ -4081,7 +4086,7 @@ Please review the changes carefully before merging.`;
 
   app.post('/api/developer/webhooks', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { url, events } = req.body;
       
       // Generate webhook secret
@@ -4105,7 +4110,7 @@ Please review the changes carefully before merging.`;
 
   app.delete('/api/developer/webhooks/:id', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const webhookId = parseInt(req.params.id);
       
       await storage.deleteWebhook(webhookId, userId);
@@ -4316,7 +4321,7 @@ Please review the changes carefully before merging.`;
   // Teams endpoints
   app.get('/api/teams', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const teams = await storage.getUserTeams(userId);
       res.json(teams);
     } catch (error) {
@@ -4327,7 +4332,7 @@ Please review the changes carefully before merging.`;
 
   app.post('/api/teams', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { name, description } = req.body;
       
       if (!name) {
@@ -4349,7 +4354,7 @@ Please review the changes carefully before merging.`;
 
   app.get('/api/teams/:teamId/members', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { teamId } = req.params;
       
       // Check if user is member of the team
@@ -4368,7 +4373,7 @@ Please review the changes carefully before merging.`;
 
   app.post('/api/teams/:teamId/invite', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { teamId } = req.params;
       const { email, role } = req.body;
       
@@ -4394,7 +4399,7 @@ Please review the changes carefully before merging.`;
 
   app.patch('/api/teams/:teamId/members/:memberId', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { teamId, memberId } = req.params;
       const { role } = req.body;
       
@@ -4414,7 +4419,7 @@ Please review the changes carefully before merging.`;
 
   app.delete('/api/teams/:teamId/members/:memberId', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const user = getAuthUser(req); const userId = user.claims.sub;
       const { teamId, memberId } = req.params;
       
       // Check if user has permission to remove members
@@ -4487,3 +4492,9 @@ Please review the changes carefully before merging.`;
 
   return httpServer;
 }
+
+
+
+
+
+

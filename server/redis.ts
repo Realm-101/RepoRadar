@@ -1,4 +1,4 @@
-import { createClient, RedisClientType } from 'redis';
+import { createClient, type RedisClientType } from 'redis';
 import type { RedisClientOptions } from 'redis';
 
 /**
@@ -6,7 +6,7 @@ import type { RedisClientOptions } from 'redis';
  * Handles Redis client lifecycle with error handling and reconnection logic
  */
 class RedisConnectionManager {
-  private client: RedisClientType | null = null;
+  private client: ReturnType<typeof createClient> | null = null;
   private isConnecting = false;
   private reconnectAttempts = 0;
   private readonly maxReconnectAttempts = 10;
@@ -31,7 +31,7 @@ class RedisConnectionManager {
    * Get or create Redis client
    * Requirement 3.1: Graceful fallback when Redis unavailable
    */
-  async getClient(): Promise<RedisClientType> {
+  async getClient(): Promise<ReturnType<typeof createClient>> {
     if (!this.isEnabled) {
       throw new Error('Redis is disabled in configuration');
     }
@@ -56,7 +56,7 @@ class RedisConnectionManager {
    * Returns null if Redis is unavailable
    * Requirement 3.1: Non-blocking Redis access
    */
-  async tryGetClient(): Promise<RedisClientType | null> {
+  async tryGetClient(): Promise<ReturnType<typeof createClient> | null> {
     try {
       if (!this.isEnabled) {
         return null;
@@ -81,7 +81,7 @@ class RedisConnectionManager {
   /**
    * Connect to Redis with retry logic
    */
-  private async connect(): Promise<RedisClientType> {
+  private async connect(): Promise<ReturnType<typeof createClient>> {
     this.isConnecting = true;
 
     try {

@@ -152,6 +152,16 @@ export interface IPerformanceMonitor {
    * Unregister a metric collector
    */
   unregisterCollector(name: string): void;
+  
+  /**
+   * Get the default metrics collector
+   */
+  getDefaultCollector(): IMetricsCollector;
+  
+  /**
+   * Get names of all registered collectors
+   */
+  getCollectorNames(): string[];
 }
 
 // Database Performance Interfaces

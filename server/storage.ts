@@ -175,7 +175,7 @@ export interface IStorage {
   
   // Collections operations
   getUserCollections(userId: string): Promise<Collection[]>;
-  createCollection(userId: string, collection: InsertCollection): Promise<Collection>;
+  createCollection(collection: InsertCollection): Promise<Collection>;
   addToCollection(collectionId: number, repositoryId: string, notes?: string): Promise<CollectionItem>;
   
   // Activity tracking
@@ -594,6 +594,7 @@ export class DatabaseStorage implements IStorage {
         strengths: repositoryAnalyses.strengths,
         weaknesses: repositoryAnalyses.weaknesses,
         recommendations: repositoryAnalyses.recommendations,
+        scoreExplanations: repositoryAnalyses.scoreExplanations,
         createdAt: repositoryAnalyses.createdAt,
         repository: repositories,
       })
@@ -625,6 +626,7 @@ export class DatabaseStorage implements IStorage {
         strengths: repositoryAnalyses.strengths,
         weaknesses: repositoryAnalyses.weaknesses,
         recommendations: repositoryAnalyses.recommendations,
+        scoreExplanations: repositoryAnalyses.scoreExplanations,
         createdAt: repositoryAnalyses.createdAt,
         repository: repositories,
       })
@@ -1581,7 +1583,7 @@ export class DatabaseStorage implements IStorage {
     return member?.role || null;
   }
 
-  async createTeamInvitation(invitation: { teamId: string; email: string; role: string }): Promise<{ id: string; token: string; expiresAt: Date }> {
+  async createTeamInvitation(invitation: { teamId: string; email: string; role: string; invitedBy: string }): Promise<{ id: string; token: string; expiresAt: Date }> {
     const token = Math.random().toString(36).substring(2, 15);
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7); // 7 days expiry

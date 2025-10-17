@@ -109,8 +109,9 @@ class MetricsCollector {
   private cleanupInterval: NodeJS.Timeout | null = null;
 
   constructor() {
-    this.maxMetrics = config.monitoring.metricsCollection.batchSize;
-    this.retentionMs = config.monitoring.metricsCollection.retentionDays * 24 * 60 * 60 * 1000;
+    const monitoring = config.getMonitoring();
+    this.maxMetrics = monitoring.metricsCollection.batchSize;
+    this.retentionMs = monitoring.metricsCollection.retentionDays * 24 * 60 * 60 * 1000;
     
     // Start cleanup interval
     this.startCleanup();
@@ -120,7 +121,8 @@ class MetricsCollector {
    * Start periodic cleanup of old metrics
    */
   private startCleanup(): void {
-    const intervalMs = config.monitoring.metricsCollection.interval * 1000;
+    const monitoring = config.getMonitoring();
+    const intervalMs = monitoring.metricsCollection.interval * 1000;
     
     this.cleanupInterval = setInterval(() => {
       this.cleanup();
@@ -168,16 +170,17 @@ class MetricsCollector {
    * Record request metric
    */
   public recordRequest(metric: RequestMetric): void {
-    if (!config.monitoring.enabled) return;
+    const monitoring = config.getMonitoring();
+    if (!monitoring.enabled) return;
     
     this.requestMetrics.push(metric);
     
     // Check alerting thresholds
-    if (config.monitoring.alerting.enabled) {
-      if (metric.duration > config.monitoring.alerting.thresholds.apiResponseTime) {
+    if (monitoring.alerting.enabled) {
+      if (metric.duration > monitoring.alerting.thresholds.apiResponseTime) {
         this.triggerAlert('api_response_time', {
           message: `Slow API response: ${metric.method} ${metric.path} took ${metric.duration}ms`,
-          threshold: config.monitoring.alerting.thresholds.apiResponseTime,
+          threshold: monitoring.alerting.thresholds.apiResponseTime,
           actual: metric.duration,
           metric,
         });
@@ -189,16 +192,17 @@ class MetricsCollector {
    * Record database query metric
    */
   public recordDatabaseQuery(metric: DatabaseMetric): void {
-    if (!config.monitoring.enabled) return;
+    const monitoring = config.getMonitoring();
+    if (!monitoring.enabled) return;
     
     this.databaseMetrics.push(metric);
     
     // Check alerting thresholds
-    if (config.monitoring.alerting.enabled) {
-      if (metric.duration > config.monitoring.alerting.thresholds.databaseQueryTime) {
+    if (monitoring.alerting.enabled) {
+      if (metric.duration > monitoring.alerting.thresholds.databaseQueryTime) {
         this.triggerAlert('database_query_time', {
           message: `Slow database query: ${metric.query.substring(0, 100)} took ${metric.duration}ms`,
-          threshold: config.monitoring.alerting.thresholds.databaseQueryTime,
+          threshold: monitoring.alerting.thresholds.databaseQueryTime,
           actual: metric.duration,
           metric,
         });
@@ -210,7 +214,8 @@ class MetricsCollector {
    * Record cache operation metric
    */
   public recordCacheOperation(metric: CacheMetric): void {
-    if (!config.monitoring.enabled) return;
+    const monitoring = config.getMonitoring();
+    if (!monitoring.enabled) return;
     
     this.cacheMetrics.push(metric);
   }
@@ -219,7 +224,8 @@ class MetricsCollector {
    * Record API call metric
    */
   public recordAPICall(metric: APIMetric): void {
-    if (!config.monitoring.enabled) return;
+    const monitoring = config.getMonitoring();
+    if (!monitoring.enabled) return;
     
     this.apiMetrics.push(metric);
   }
@@ -317,7 +323,8 @@ class MetricsCollector {
 
     const durations = this.databaseMetrics.map(m => m.duration).sort((a, b) => a - b);
     const total = this.databaseMetrics.length;
-    const slowQueryThreshold = config.monitoring.alerting.thresholds.databaseQueryTime;
+    const monitoring = config.getMonitoring();
+    const slowQueryThreshold = monitoring.alerting.thresholds.databaseQueryTime;
     
     const slowQueries = this.databaseMetrics.filter(m => m.duration > slowQueryThreshold).length;
     const failedQueries = this.databaseMetrics.filter(m => !m.success).length;
@@ -367,11 +374,12 @@ class MetricsCollector {
       : 0;
 
     // Check cache hit rate threshold
-    if (config.monitoring.alerting.enabled) {
-      if (hitRate < config.monitoring.alerting.thresholds.cacheHitRate && (hits + misses) > 10) {
+    const monitoring = config.getMonitoring();
+    if (monitoring.alerting.enabled) {
+      if (hitRate < monitoring.alerting.thresholds.cacheHitRate && (hits + misses) > 10) {
         this.triggerAlert('cache_hit_rate', {
           message: `Low cache hit rate: ${hitRate.toFixed(1)}%`,
-          threshold: config.monitoring.alerting.thresholds.cacheHitRate,
+          threshold: monitoring.alerting.thresholds.cacheHitRate,
           actual: hitRate,
         });
       }
@@ -439,7 +447,8 @@ class MetricsCollector {
    * Trigger alert
    */
   private triggerAlert(type: string, data: any): void {
-    const channels = config.monitoring.alerting.channels;
+    const monitoring = config.getMonitoring();
+    const channels = monitoring.alerting.channels;
     
     for (const channel of channels) {
       switch (channel) {
