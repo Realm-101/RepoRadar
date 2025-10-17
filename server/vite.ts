@@ -160,6 +160,9 @@ export function serveStatic(app: Express) {
   }
   
   log(`Serving static files from: ${finalPath}`);
+  console.log(`[DEBUG] Static file serving - finalPath: ${finalPath}`);
+  console.log(`[DEBUG] Static file serving - exists: ${fs.existsSync(finalPath)}`);
+  console.log(`[DEBUG] Static file serving - files:`, fs.existsSync(finalPath) ? fs.readdirSync(finalPath) : 'Directory does not exist');
 
   // Apply compression middleware
   app.use(configureCompression());

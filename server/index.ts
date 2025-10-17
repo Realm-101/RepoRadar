@@ -11,6 +11,9 @@ import { initializeConfiguration } from "./config/validation";
 
 const app = express();
 
+// Set Express environment based on NODE_ENV
+app.set('env', process.env.NODE_ENV || 'development');
+
 // Apply security middleware first (before parsing body)
 app.use(enforceHTTPS);
 app.use(setSecurityHeaders);
@@ -97,9 +100,14 @@ app.use((req, res, next) => {
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
+  const environment = app.get("env");
+  logger.info(`Express environment: ${environment}, NODE_ENV: ${process.env.NODE_ENV}`);
+  
+  if (environment === "development") {
+    logger.info('Setting up Vite development server');
     await setupVite(app, server);
   } else {
+    logger.info('Setting up static file serving for production');
     serveStatic(app);
   }
 
