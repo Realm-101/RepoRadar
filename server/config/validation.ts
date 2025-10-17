@@ -167,7 +167,7 @@ export function validateConfiguration(): ConfigValidationResult {
     }
 
     // Validate APP_URL format
-    if (process.env.APP_URL) {
+    if (process.env.APP_URL && process.env.APP_URL.trim()) {
       try {
         new URL(process.env.APP_URL);
       } catch {
