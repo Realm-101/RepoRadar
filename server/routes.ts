@@ -398,168 +398,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // OAuth initiation routes (with auth rate limiting)
   app.get('/api/auth/oauth/google', authRateLimit, asyncHandler(async (req, res) => {
-    try {
-      const { getStackAuth } = await import('./auth/oauthService');
-      const stackAuth = getStackAuth();
-      
-      // Get the OAuth URL from Stack Auth
-      // This will redirect the user to Google's OAuth consent screen
-      const redirectUrl = `${process.env.BASE_URL || 'http://localhost:3000'}/api/auth/callback/google`;
-      
-      // For now, redirect to Stack Auth's OAuth handler
-      // Stack Auth will handle the OAuth flow and redirect back to our callback
-      res.redirect(`https://api.stack-auth.com/api/v1/auth/oauth/authorize?provider=google&redirect_uri=${encodeURIComponent(redirectUrl)}&client_id=${process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY}`);
-    } catch (error) {
-      console.error('Google OAuth initiation error:', error);
-      res.redirect('/handler/sign-in?error=oauth_init_failed');
-    }
+    // TODO: Implement Google OAuth with Stack Auth
+    // Temporarily disabled to avoid Next.js dependency issues
+    res.status(501).json({ error: 'OAuth not yet implemented' });
   }));
 
   app.get('/api/auth/oauth/github', authRateLimit, asyncHandler(async (req, res) => {
-    try {
-      const { getStackAuth } = await import('./auth/oauthService');
-      const stackAuth = getStackAuth();
-      
-      // Get the OAuth URL from Stack Auth
-      // This will redirect the user to GitHub's OAuth consent screen
-      const redirectUrl = `${process.env.BASE_URL || 'http://localhost:3000'}/api/auth/callback/github`;
-      
-      // For now, redirect to Stack Auth's OAuth handler
-      // Stack Auth will handle the OAuth flow and redirect back to our callback
-      res.redirect(`https://api.stack-auth.com/api/v1/auth/oauth/authorize?provider=github&redirect_uri=${encodeURIComponent(redirectUrl)}&client_id=${process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY}`);
-    } catch (error) {
-      console.error('GitHub OAuth initiation error:', error);
-      res.redirect('/handler/sign-in?error=oauth_init_failed');
-    }
+    // TODO: Implement GitHub OAuth with Stack Auth
+    // Temporarily disabled to avoid Next.js dependency issues
+    res.status(501).json({ error: 'OAuth not yet implemented' });
   }));
 
   // OAuth callback routes (with auth rate limiting)
   app.get('/api/auth/callback/google', authRateLimit, asyncHandler(async (req, res) => {
-    const { code, state } = req.query;
-    
-    if (!code || typeof code !== 'string') {
-      return res.status(400).json({ error: 'Missing or invalid authorization code' });
-    }
-    
-    try {
-      const { getStackAuth } = await import('./auth/oauthService');
-      const stackAuth = getStackAuth();
-      
-      // Get the current user from Stack Auth
-      const stackUser = await stackAuth.getUser({ tokenStore: req as any });
-      
-      if (!stackUser) {
-        return res.status(401).json({ error: 'Authentication failed' });
-      }
-      
-      // Extract user data from Stack Auth
-      const email = stackUser.primaryEmail;
-      const googleProvider = stackUser.oauthProviders?.find(p => p.id === 'google');
-      const googleId = googleProvider?.id;
-      
-      if (!email || !googleId) {
-        return res.status(400).json({ error: 'Missing required user data from Google' });
-      }
-      
-      // Check if user exists by Google ID
-      let user = await storage.getUserByGoogleId(googleId);
-      
-      if (!user) {
-        // Check if user exists by email (for account linking)
-        user = await storage.getUserByEmail(email);
-        
-        if (user) {
-          // Link Google account to existing user
-          user = await storage.linkOAuthProvider(user.id, 'google', googleId);
-        } else {
-          // Create new user
-          user = await storage.upsertUser({
-            id: stackUser.id,
-            email,
-            firstName: stackUser.displayName?.split(' ')[0],
-            lastName: stackUser.displayName?.split(' ').slice(1).join(' '),
-            profileImageUrl: stackUser.profileImageUrl,
-            googleId,
-            oauthProviders: ['google'],
-            emailVerified: stackUser.primaryEmailVerified,
-          });
-        }
-      }
-      
-      // Initialize session with security features
-      const { SessionService } = await import('./auth/sessionService');
-      await SessionService.initializeSession(req, user.id);
-      
-      // Redirect to app with success
-      res.redirect('/dashboard');
-    } catch (error) {
-      console.error('Google OAuth callback error:', error);
-      res.redirect('/auth/error?message=google_auth_failed');
-    }
+    // TODO: Implement Google OAuth callback with Stack Auth
+    // Temporarily disabled to avoid Next.js dependency issues
+    res.status(501).json({ error: 'OAuth not yet implemented' });
   }));
 
   app.get('/api/auth/callback/github', authRateLimit, asyncHandler(async (req, res) => {
-    const { code, state } = req.query;
-    
-    if (!code || typeof code !== 'string') {
-      return res.status(400).json({ error: 'Missing or invalid authorization code' });
-    }
-    
-    try {
-      const { getStackAuth } = await import('./auth/oauthService');
-      const stackAuth = getStackAuth();
-      
-      // Get the current user from Stack Auth
-      const stackUser = await stackAuth.getUser({ tokenStore: req as any });
-      
-      if (!stackUser) {
-        return res.status(401).json({ error: 'Authentication failed' });
-      }
-      
-      // Extract user data from Stack Auth
-      const email = stackUser.primaryEmail;
-      const githubProvider = stackUser.oauthProviders?.find(p => p.id === 'github');
-      const githubId = githubProvider?.id;
-      
-      if (!email || !githubId) {
-        return res.status(400).json({ error: 'Missing required user data from GitHub' });
-      }
-      
-      // Check if user exists by GitHub ID
-      let user = await storage.getUserByGithubId(githubId);
-      
-      if (!user) {
-        // Check if user exists by email (for account linking)
-        user = await storage.getUserByEmail(email);
-        
-        if (user) {
-          // Link GitHub account to existing user
-          user = await storage.linkOAuthProvider(user.id, 'github', githubId);
-        } else {
-          // Create new user
-          user = await storage.upsertUser({
-            id: stackUser.id,
-            email,
-            firstName: stackUser.displayName?.split(' ')[0],
-            lastName: stackUser.displayName?.split(' ').slice(1).join(' '),
-            profileImageUrl: stackUser.profileImageUrl,
-            githubId,
-            oauthProviders: ['github'],
-            emailVerified: stackUser.primaryEmailVerified,
-          });
-        }
-      }
-      
-      // Initialize session with security features
-      const { SessionService } = await import('./auth/sessionService');
-      await SessionService.initializeSession(req, user.id);
-      
-      // Redirect to app with success
-      res.redirect('/dashboard');
-    } catch (error) {
-      console.error('GitHub OAuth callback error:', error);
-      res.redirect('/auth/error?message=github_auth_failed');
-    }
+    // TODO: Implement GitHub OAuth callback with Stack Auth
+    // Temporarily disabled to avoid Next.js dependency issues
+    res.status(501).json({ error: 'OAuth not yet implemented' });
   }));
 
   // Password reset endpoints (with reset rate limiting)
