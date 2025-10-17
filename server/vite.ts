@@ -153,6 +153,16 @@ export function serveStatic(app: Express) {
   const fallbackPath = path.resolve(import.meta.dirname, "public");
   const finalPath = fs.existsSync(distPath) ? distPath : fallbackPath;
 
+  // Debug logging
+  console.log(`[DEBUG] serveStatic called`);
+  console.log(`[DEBUG] process.cwd(): ${process.cwd()}`);
+  console.log(`[DEBUG] import.meta.dirname: ${import.meta.dirname}`);
+  console.log(`[DEBUG] distPath: ${distPath}`);
+  console.log(`[DEBUG] fallbackPath: ${fallbackPath}`);
+  console.log(`[DEBUG] distPath exists: ${fs.existsSync(distPath)}`);
+  console.log(`[DEBUG] fallbackPath exists: ${fs.existsSync(fallbackPath)}`);
+  console.log(`[DEBUG] finalPath: ${finalPath}`);
+
   if (!fs.existsSync(finalPath)) {
     throw new Error(
       `Could not find the build directory. Tried:\n  - ${distPath}\n  - ${fallbackPath}\nMake sure to build the client first`,
@@ -175,6 +185,22 @@ export function serveStatic(app: Express) {
       setCacheHeaders(res, filePath);
     },
   }));
+
+  // Debug endpoint to test static file serving
+  app.get('/debug-static', (req: Request, res: Response) => {
+    const indexPath = path.resolve(finalPath, "index.html");
+    const cssPath = path.resolve(finalPath, "assets", "css", "index-BbisbwUa.css");
+    
+    res.json({
+      finalPath,
+      indexPath,
+      indexPathExists: fs.existsSync(indexPath),
+      cssPath,
+      cssPathExists: fs.existsSync(cssPath),
+      directoryContents: fs.existsSync(finalPath) ? fs.readdirSync(finalPath) : 'Directory does not exist',
+      cssDirectoryContents: fs.existsSync(path.resolve(finalPath, "assets", "css")) ? fs.readdirSync(path.resolve(finalPath, "assets", "css")) : 'CSS directory does not exist'
+    });
+  });
 
   // SPA fallback - serve index.html for all non-API routes
   // This ensures client-side routing works correctly
