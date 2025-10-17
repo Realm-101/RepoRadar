@@ -166,13 +166,15 @@ export function validateConfiguration(): ConfigValidationResult {
       warnings.push('Using Stripe live keys in non-production environment');
     }
 
-    // Validate APP_URL format
+    // Validate APP_URL format (warning only, not blocking)
     if (process.env.APP_URL && process.env.APP_URL.trim()) {
       try {
         new URL(process.env.APP_URL);
       } catch {
-        errors.push('APP_URL must be a valid URL (e.g., https://example.com)');
+        warnings.push('APP_URL should be a valid URL (e.g., https://example.com). Some features may not work correctly.');
       }
+    } else if (!process.env.APP_URL) {
+      warnings.push('APP_URL is not set. Password reset and Stripe redirects may not work correctly.');
     }
   }
 
