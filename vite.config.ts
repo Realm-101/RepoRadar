@@ -1,11 +1,21 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import tailwindcss from "tailwindcss";
+import autoprefixer from "autoprefixer";
 
 export default defineConfig({
   plugins: [
     react(),
   ],
+  css: {
+    postcss: {
+      plugins: [
+        tailwindcss,
+        autoprefixer,
+      ],
+    },
+  },
   define: {
     'import.meta.env.VITE_STACK_PROJECT_ID': JSON.stringify(process.env.NEXT_PUBLIC_STACK_PROJECT_ID),
     'import.meta.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY': JSON.stringify(process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY),
