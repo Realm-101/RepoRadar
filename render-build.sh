@@ -3,7 +3,7 @@
 set -e
 
 echo "Cleaning previous builds and caches..."
-rm -rf dist node_modules/.vite client/.vite
+rm -rf dist node_modules/.vite client/.vite node_modules
 
 echo "Installing dependencies with legacy peer deps..."
 npm ci --legacy-peer-deps
