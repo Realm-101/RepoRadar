@@ -44,6 +44,11 @@ OPENAI_API_KEY=sk-your_openai_api_key_here
 # Application URL (update after deployment)
 APP_URL=https://your-app.onrender.com
 
+# CORS Configuration (optional - for multiple domains)
+# If you have a custom domain, add both URLs separated by commas
+# Example: https://reporadar.online,https://reporadar-t0wc.onrender.com
+CORS_ALLOWED_ORIGINS=https://your-custom-domain.com,https://your-app.onrender.com
+
 # Email Service (from Resend - https://resend.com/api-keys)
 RESEND_API_KEY=re_your_resend_api_key
 EMAIL_FROM=noreply@yourdomain.com

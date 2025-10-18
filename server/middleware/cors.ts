@@ -21,15 +21,36 @@ function getAllowedOrigins(): string[] {
   const nodeEnv = process.env.NODE_ENV || 'development';
   
   if (nodeEnv === 'production') {
-    // Production: Only allow configured production domain
+    // Production: Allow both APP_URL and CORS_ALLOWED_ORIGINS
+    const origins: string[] = [];
+    
+    // Add primary APP_URL if configured
     const appUrl = process.env.APP_URL;
     if (appUrl) {
-      logger.info('CORS: Production mode with APP_URL', { appUrl });
-      return [appUrl];
+      origins.push(appUrl);
     }
     
-    // Fallback to Render default if APP_URL not set
-    logger.warn('CORS: APP_URL not set, using wildcard (not recommended for production)');
+    // Add additional allowed origins from CORS_ALLOWED_ORIGINS
+    // Format: comma-separated list of origins
+    // Example: https://reporadar.online,https://reporadar-t0wc.onrender.com
+    const corsOrigins = process.env.CORS_ALLOWED_ORIGINS;
+    if (corsOrigins) {
+      const additionalOrigins = corsOrigins
+        .split(',')
+        .map(origin => origin.trim())
+        .filter(origin => origin.length > 0);
+      origins.push(...additionalOrigins);
+    }
+    
+    if (origins.length > 0) {
+      // Remove duplicates
+      const uniqueOrigins = [...new Set(origins)];
+      logger.info('CORS: Production mode with configured origins', { origins: uniqueOrigins });
+      return uniqueOrigins;
+    }
+    
+    // Fallback to Render default if no origins set
+    logger.warn('CORS: No origins configured, using wildcard (not recommended for production)');
     return ['*'];
   }
   
