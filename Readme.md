@@ -9,7 +9,7 @@
 RepoRadar is a high-performance, full-stack web application that provides AI-powered analysis of GitHub repositories. The platform helps users discover, analyze, and compare repositories based on key metrics including originality, completeness, marketability, monetization potential, and usefulness. Built with a modern React frontend and Express.js backend, it leverages Google's Gemini 2.5 Pro AI model to provide comprehensive repository insights.
 
 **🚀 Performance Optimized**: RepoRadar includes comprehensive performance optimization features across database, API, and frontend layers, with intelligent caching, compression, and fallback strategies for enterprise-grade reliability.
-
+** Live-Beta v0.29 @ Https://RepoRadar.online
 ## 🎯 Key Features
 
 ### Core Analysis Features
