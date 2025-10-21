@@ -41,7 +41,13 @@ export function TrendingRepos() {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center space-x-2 mb-1">
-                    <h4 className="font-semibold text-white">{repo.name}</h4>
+                    <h4 
+                      className="font-semibold text-white hover:text-primary cursor-pointer transition-colors"
+                      onClick={() => window.open(repo.htmlUrl, '_blank')}
+                      title="View on GitHub"
+                    >
+                      {repo.name}
+                    </h4>
                     {repo.language && (
                       <Badge variant="secondary" className="text-xs">
                         {repo.language}
@@ -61,12 +67,13 @@ export function TrendingRepos() {
                   </div>
                 </div>
                 <Button
-                  onClick={() => window.location.href = `/analyze?url=${encodeURIComponent(repo.htmlUrl)}`}
+                  onClick={() => window.open(repo.htmlUrl, '_blank')}
                   size="sm"
                   variant="ghost"
                   className="ml-2"
+                  title="View on GitHub"
                 >
-                  <i className="fas fa-chart-line"></i>
+                  <i className="fas fa-external-link-alt"></i>
                 </Button>
               </div>
             </div>

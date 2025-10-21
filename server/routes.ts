@@ -3704,6 +3704,18 @@ Please review the changes carefully before merging.`;
   });
 
   // Collections Endpoints
+  app.get('/api/collections', isAuthenticated, async (req: any, res) => {
+    try {
+      const user = getAuthUser(req); 
+      const userId = user.claims.sub;
+      
+      const collections = await storage.getUserCollections(userId);
+      res.json(collections);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get('/api/collections/:userId', isAuthenticated, async (req: any, res) => {
     try {
       const { userId } = req.params;

@@ -202,17 +202,48 @@ export default function Profile() {
                   </div>
                 )}
                 {isEditingProfile && (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="absolute -bottom-2 -right-2 rounded-full w-8 h-8 p-0"
-                    onClick={() => {
-                      const url = prompt("Enter profile image URL:");
-                      if (url) setProfileImageUrl(url);
-                    }}
-                  >
-                    <Camera className="w-4 h-4" />
-                  </Button>
+                  <div className="absolute -bottom-2 -right-2 flex gap-1">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      id="profile-image-upload"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          // For now, we'll use a simple file reader to convert to base64
+                          // In production, you'd want to upload to a proper image service
+                          const reader = new FileReader();
+                          reader.onload = (event) => {
+                            const result = event.target?.result as string;
+                            setProfileImageUrl(result);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="rounded-full w-8 h-8 p-0"
+                      onClick={() => document.getElementById('profile-image-upload')?.click()}
+                      title="Upload from device"
+                    >
+                      <Camera className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="rounded-full w-8 h-8 p-0"
+                      onClick={() => {
+                        const url = prompt("Enter profile image URL:");
+                        if (url) setProfileImageUrl(url);
+                      }}
+                      title="Enter URL"
+                    >
+                      <span className="text-xs">🔗</span>
+                    </Button>
+                  </div>
                 )}
               </div>
               <div className="flex-1">

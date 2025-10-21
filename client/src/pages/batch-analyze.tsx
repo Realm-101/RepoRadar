@@ -25,6 +25,7 @@ export default function BatchAnalyze() {
   const [repoUrls, setRepoUrls] = useState("");
   const [repositories, setRepositories] = useState<BatchRepository[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -33,10 +34,10 @@ export default function BatchAnalyze() {
       const repoMatch = url.match(/github\.com\/([^\/]+)\/([^\/\s]+)/);
       if (!repoMatch) throw new Error('Invalid GitHub URL');
       
-      const [, owner, repo] = repoMatch;
+      // Clean the URL to ensure it's properly formatted
+      const cleanUrl = url.replace(/\.git$/, '').trim();
       return apiRequest("POST", "/api/repositories/analyze", {
-        owner,
-        repo: repo.replace(/\.git$/, '')
+        url: cleanUrl
       });
     }
   });
@@ -120,7 +121,7 @@ export default function BatchAnalyze() {
     });
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     const completedRepos = repositories.filter(r => r.status === 'completed' && r.analysis);
     
     if (completedRepos.length === 0) {
@@ -132,53 +133,68 @@ export default function BatchAnalyze() {
       return;
     }
 
-    // Transform data for export utility
-    const exportData = completedRepos.map(repo => {
-      const repoInfo = repo.url.split('/');
-      const repoName = repoInfo[repoInfo.length - 1];
-      const repoOwner = repoInfo[repoInfo.length - 2];
+    setIsExporting(true);
+    
+    try {
+      // Add a small delay to show the loading state
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      return {
-        id: 'batch-' + Date.now(),
-        repositoryId: repo.url,
-        originality: repo.analysis.scores?.originality || 0,
-        completeness: repo.analysis.scores?.completeness || 0,
-        marketability: repo.analysis.scores?.marketability || 0,
-        monetization: repo.analysis.scores?.monetization || 0,
-        usefulness: repo.analysis.scores?.usefulness || 0,
-        overallScore: repo.analysis.overall_score || 0,
-        summary: repo.analysis.summary || '',
-        strengths: repo.analysis.key_findings || [],
-        weaknesses: repo.analysis.weaknesses || [],
-        recommendations: repo.analysis.recommendations || [],
-        createdAt: new Date().toISOString(),
-        repository: {
-          name: repoName,
-          full_name: `${repoOwner}/${repoName}`,
-          description: repo.analysis.description || '',
-          language: repo.analysis.language || '',
-          stargazers_count: repo.analysis.stars || 0,
-          forks_count: repo.analysis.forks || 0,
-        },
-        // For backward compatibility
-        originality_score: repo.analysis.scores?.originality || 0,
-        completeness_score: repo.analysis.scores?.completeness || 0,
-        marketability_score: repo.analysis.scores?.marketability || 0,
-        monetization_score: repo.analysis.scores?.monetization || 0,
-        usefulness_score: repo.analysis.scores?.usefulness || 0,
-        overall_score: repo.analysis.overall_score || 0,
-        key_findings: repo.analysis.key_findings || [],
-      };
-    });
+      // Transform data for export utility
+      const exportData = completedRepos.map(repo => {
+        const repoInfo = repo.url.split('/');
+        const repoName = repoInfo[repoInfo.length - 1];
+        const repoOwner = repoInfo[repoInfo.length - 2];
+        
+        return {
+          id: 'batch-' + Date.now(),
+          repositoryId: repo.url,
+          originality: repo.analysis.scores?.originality || 0,
+          completeness: repo.analysis.scores?.completeness || 0,
+          marketability: repo.analysis.scores?.marketability || 0,
+          monetization: repo.analysis.scores?.monetization || 0,
+          usefulness: repo.analysis.scores?.usefulness || 0,
+          overallScore: repo.analysis.overall_score || 0,
+          summary: repo.analysis.summary || '',
+          strengths: repo.analysis.key_findings || [],
+          weaknesses: repo.analysis.weaknesses || [],
+          recommendations: repo.analysis.recommendations || [],
+          createdAt: new Date().toISOString(),
+          repository: {
+            name: repoName,
+            full_name: `${repoOwner}/${repoName}`,
+            description: repo.analysis.description || '',
+            language: repo.analysis.language || '',
+            stargazers_count: repo.analysis.stars || 0,
+            forks_count: repo.analysis.forks || 0,
+          },
+          // For backward compatibility
+          originality_score: repo.analysis.scores?.originality || 0,
+          completeness_score: repo.analysis.scores?.completeness || 0,
+          marketability_score: repo.analysis.scores?.marketability || 0,
+          monetization_score: repo.analysis.scores?.monetization || 0,
+          usefulness_score: repo.analysis.scores?.usefulness || 0,
+          overall_score: repo.analysis.overall_score || 0,
+          key_findings: repo.analysis.key_findings || [],
+        };
+      });
 
-    exportToCSV(exportData);
-    toast({
-      title: "Export Successful",
-      description: "Batch analysis results exported as CSV",
-    });
+      exportToCSV(exportData);
+      toast({
+        title: "Export Successful",
+        description: "Batch analysis results exported as CSV",
+      });
+    } catch (error) {
+      toast({
+        title: "Export Failed",
+        description: "Failed to export data. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     const completedRepos = repositories.filter(r => r.status === 'completed' && r.analysis);
     
     if (completedRepos.length === 0) {
@@ -190,50 +206,65 @@ export default function BatchAnalyze() {
       return;
     }
 
-    // Transform data for export utility
-    const exportData = completedRepos.map(repo => {
-      const repoInfo = repo.url.split('/');
-      const repoName = repoInfo[repoInfo.length - 1];
-      const repoOwner = repoInfo[repoInfo.length - 2];
+    setIsExporting(true);
+    
+    try {
+      // Add a small delay to show the loading state
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
-      return {
-        id: 'batch-' + Date.now(),
-        repositoryId: repo.url,
-        originality: repo.analysis.scores?.originality || 0,
-        completeness: repo.analysis.scores?.completeness || 0,
-        marketability: repo.analysis.scores?.marketability || 0,
-        monetization: repo.analysis.scores?.monetization || 0,
-        usefulness: repo.analysis.scores?.usefulness || 0,
-        overallScore: repo.analysis.overall_score || 0,
-        summary: repo.analysis.summary || '',
-        strengths: repo.analysis.key_findings || [],
-        weaknesses: repo.analysis.weaknesses || [],
-        recommendations: repo.analysis.recommendations || [],
-        createdAt: new Date().toISOString(),
-        repository: {
-          name: repoName,
-          full_name: `${repoOwner}/${repoName}`,
-          description: repo.analysis.description || '',
-          language: repo.analysis.language || '',
-          stargazers_count: repo.analysis.stars || 0,
-          forks_count: repo.analysis.forks || 0,
-        },
-        // For backward compatibility
-        originality_score: repo.analysis.scores?.originality || 0,
-        completeness_score: repo.analysis.scores?.completeness || 0,
-        marketability_score: repo.analysis.scores?.marketability || 0,
-        monetization_score: repo.analysis.scores?.monetization || 0,
-        usefulness_score: repo.analysis.scores?.usefulness || 0,
-        overall_score: repo.analysis.overall_score || 0,
-        key_findings: repo.analysis.key_findings || [],
-      };
-    });
+      // Transform data for export utility
+      const exportData = completedRepos.map(repo => {
+        const repoInfo = repo.url.split('/');
+        const repoName = repoInfo[repoInfo.length - 1];
+        const repoOwner = repoInfo[repoInfo.length - 2];
+        
+        return {
+          id: 'batch-' + Date.now(),
+          repositoryId: repo.url,
+          originality: repo.analysis.scores?.originality || 0,
+          completeness: repo.analysis.scores?.completeness || 0,
+          marketability: repo.analysis.scores?.marketability || 0,
+          monetization: repo.analysis.scores?.monetization || 0,
+          usefulness: repo.analysis.scores?.usefulness || 0,
+          overallScore: repo.analysis.overall_score || 0,
+          summary: repo.analysis.summary || '',
+          strengths: repo.analysis.key_findings || [],
+          weaknesses: repo.analysis.weaknesses || [],
+          recommendations: repo.analysis.recommendations || [],
+          createdAt: new Date().toISOString(),
+          repository: {
+            name: repoName,
+            full_name: `${repoOwner}/${repoName}`,
+            description: repo.analysis.description || '',
+            language: repo.analysis.language || '',
+            stargazers_count: repo.analysis.stars || 0,
+            forks_count: repo.analysis.forks || 0,
+          },
+          // For backward compatibility
+          originality_score: repo.analysis.scores?.originality || 0,
+          completeness_score: repo.analysis.scores?.completeness || 0,
+          marketability_score: repo.analysis.scores?.marketability || 0,
+          monetization_score: repo.analysis.scores?.monetization || 0,
+          usefulness_score: repo.analysis.scores?.usefulness || 0,
+          overall_score: repo.analysis.overall_score || 0,
+          key_findings: repo.analysis.key_findings || [],
+        };
+      });
 
-    exportBatchSummary(exportData);
-    toast({
-      title: "Export Successful",
-      description: "Batch analysis results exported as PDF",
-    });
+      exportBatchSummary(exportData);
+      toast({
+        title: "Export Successful",
+        description: "Batch analysis results exported as PDF",
+      });
+    } catch (error) {
+      toast({
+        title: "Export Failed",
+        description: "Failed to export data. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
 
@@ -335,16 +366,26 @@ export default function BatchAnalyze() {
                         size="sm"
                         variant="outline"
                         onClick={handleExportCSV}
+                        disabled={isExporting}
                       >
-                        <Download className="w-4 h-4 mr-1" />
+                        {isExporting ? (
+                          <div className="w-4 h-4 mr-1 animate-spin border-2 border-current border-t-transparent rounded-full" />
+                        ) : (
+                          <Download className="w-4 h-4 mr-1" />
+                        )}
                         CSV
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={handleExportPDF}
+                        disabled={isExporting}
                       >
-                        <Download className="w-4 h-4 mr-1" />
+                        {isExporting ? (
+                          <div className="w-4 h-4 mr-1 animate-spin border-2 border-current border-t-transparent rounded-full" />
+                        ) : (
+                          <Download className="w-4 h-4 mr-1" />
+                        )}
                         PDF
                       </Button>
                     </div>
