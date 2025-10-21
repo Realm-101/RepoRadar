@@ -137,6 +137,17 @@ export const repositoryAnalyses = pgTable("repository_analyses", {
   weaknesses: jsonb("weaknesses"),
   recommendations: jsonb("recommendations"),
   scoreExplanations: jsonb("score_explanations"),
+  
+  // Enhanced analysis fields
+  maintainability: jsonb("maintainability"), // MaintainabilityMetrics
+  contributorRisk: jsonb("contributor_risk"), // ContributorRiskMetrics
+  velocity: jsonb("velocity"), // VelocityMetrics
+  security: jsonb("security"), // SecurityMetrics
+  enhancedSummary: jsonb("enhanced_summary"), // EnhancedAnalysisSummary
+  healthScore: real("health_score"), // Overall health score 0-100
+  riskLevel: varchar("risk_level", { length: 20 }), // 'low' | 'medium' | 'high' | 'critical'
+  adoptionRecommendation: varchar("adoption_recommendation", { length: 30 }), // 'recommended' | 'conditional' | 'caution' | 'not_recommended'
+  
   createdAt: timestamp("created_at").defaultNow(),
 });
 

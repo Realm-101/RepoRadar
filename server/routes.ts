@@ -8,6 +8,7 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./neonAuth";
 import { githubService } from "./github";
 import { analyzeRepository, findSimilarRepositories, findSimilarByFunctionality, askAI, generateAIRecommendations } from "./gemini";
+import { enhancedAnalysisEngine } from "./analysis";
 import { insertRepositorySchema, insertAnalysisSchema, insertSavedRepositorySchema, repositoryTags, type User } from "@shared/schema";
 import { db } from "./db";
 import { eq, sql } from "drizzle-orm";
@@ -2220,8 +2221,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
 
-    // Analyze with Gemini
-    const analysisResult = await analyzeRepository({
+    // Analyze with Gemini (original AI analysis)
+    const originalAnalysisResult = await analyzeRepository({
       name: ghRepo.name,
       description: ghRepo.description || '',
       language: ghRepo.language || 'Unknown',
@@ -2232,6 +2233,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       topics: ghRepo.topics || [],
       readme: readme || undefined,
     });
+
+    // Enhanced analysis with all new metrics
+    const analysisResult = await enhancedAnalysisEngine.analyzeRepository(
+      ghRepo,
+      languages,
+      readme,
+      originalAnalysisResult
+    );
 
     // Store analysis
     const authUser = req.user ? getAuthUser(req) : null;
@@ -2399,8 +2408,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const updatedRepository = await storage.upsertRepository(updatedRepoData);
 
-    // Run new analysis with Gemini
-    const analysisResult = await analyzeRepository({
+    // Run new analysis with Gemini (original AI analysis)
+    const originalAnalysisResult = await analyzeRepository({
       name: ghRepo.name,
       description: ghRepo.description || '',
       language: ghRepo.language || 'Unknown',
@@ -2411,6 +2420,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       topics: ghRepo.topics || [],
       readme: readme || undefined,
     });
+
+    // Enhanced analysis with all new metrics
+    const analysisResult = await enhancedAnalysisEngine.analyzeRepository(
+      ghRepo,
+      languages,
+      readme,
+      originalAnalysisResult
+    );
 
     // Store new analysis
     const analysisData = {
@@ -4152,8 +4169,12 @@ Please review the changes carefully before merging.`;
         topics: repository.topics || [],
       };
       
-      // Perform analysis using existing gemini service
-      const geminiAnalysis = await analyzeRepository(repoForAnalysis);
+      // Perform analysis using existing gemini service (original AI analysis)
+      const originalAnalysis = await analyzeRepository(repoForAnalysis);
+      
+      // Enhanced analysis with all new metrics - but for API compatibility, we'll use a simpler approach
+      // For now, we'll just use the original analysis but could extend this in the future
+      const geminiAnalysis = originalAnalysis;
       
       // Extract string arrays from enhanced format
       const strengths = Array.isArray(geminiAnalysis.strengths) && typeof geminiAnalysis.strengths[0] === 'object' 
