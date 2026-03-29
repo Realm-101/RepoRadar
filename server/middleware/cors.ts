@@ -54,9 +54,9 @@ function getAllowedOrigins(): string[] {
     return ['*'];
   }
   
-  // Development: Allow common local development ports
+  // Development: Allow common local development ports and Replit domains
   logger.info('CORS: Development mode with local origins');
-  return [
+  const devOrigins = [
     'http://localhost:3000',
     'http://localhost:5000',
     'http://localhost:5173',
@@ -64,6 +64,25 @@ function getAllowedOrigins(): string[] {
     'http://127.0.0.1:5000',
     'http://127.0.0.1:5173'
   ];
+
+  // Add Replit preview domains if available
+  const replitDomains = process.env.REPLIT_DOMAINS;
+  const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
+  if (replitDomains) {
+    replitDomains.split(',').forEach(d => {
+      const trimmed = d.trim();
+      if (trimmed) {
+        devOrigins.push(`https://${trimmed}`);
+        devOrigins.push(`http://${trimmed}`);
+      }
+    });
+  }
+  if (replitDevDomain && !replitDomains?.includes(replitDevDomain)) {
+    devOrigins.push(`https://${replitDevDomain}`);
+    devOrigins.push(`http://${replitDevDomain}`);
+  }
+
+  return devOrigins;
 }
 
 /**
