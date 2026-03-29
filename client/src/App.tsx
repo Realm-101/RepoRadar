@@ -1,4 +1,5 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, Redirect } from "wouter";
+import type { ReactNode } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { HelmetProvider } from "react-helmet-async";
@@ -49,6 +50,13 @@ import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog"
 import { usePageTracking } from "@/hooks/usePageTracking";
 import { ErrorBoundary } from "@/components/error-boundary";
 
+function ProtectedRoute({ children }: { children: ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return null;
+  if (!isAuthenticated) return <Redirect to="/handler/sign-in" />;
+  return <>{children}</>;
+}
+
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
   usePageTracking(); // Track page views automatically
@@ -61,6 +69,13 @@ function Router() {
       {/* Auth routes */}
       <Route path="/handler/sign-in" component={SignInPage} />
       <Route path="/handler/sign-up" component={SignUpPage} />
+      <Route path="/login"><Redirect to="/handler/sign-in" /></Route>
+      <Route path="/signup"><Redirect to="/handler/sign-up" /></Route>
+
+      {/* Common alias redirects */}
+      <Route path="/dashboard">
+        {isLoading ? null : isAuthenticated ? <Redirect to="/home" /> : <Redirect to="/handler/sign-in" />}
+      </Route>
       <Route path="/forgot-password" component={ForgotPasswordPage} />
       <Route path="/reset-password" component={ResetPasswordPage} />
       
@@ -85,23 +100,35 @@ function Router() {
       <Route path="/squares-demo" component={SquaresDemo} />
       
       {/* Home page - for authenticated users */}
-      {isAuthenticated && (
-        <Route path="/home" component={Home} />
-      )}
+      <Route path="/home">
+        <ProtectedRoute><Home /></ProtectedRoute>
+      </Route>
       
-      {/* Protected routes - only for authenticated users */}
-      {isAuthenticated && (
-        <>
-          <Route path="/profile" component={Profile} />
-          <Route path="/collections" component={Collections} />
-          <Route path="/analytics" component={Analytics} />
-          <Route path="/teams" component={Teams} />
-          <Route path="/subscription" component={Subscription} />
-          <Route path="/subscription/success" component={SubscriptionSuccess} />
-          <Route path="/subscription/cancel" component={SubscriptionCancel} />
-          <Route path="/subscription/billing" component={SubscriptionBilling} />
-        </>
-      )}
+      {/* Protected routes - redirect to sign-in if not authenticated */}
+      <Route path="/profile">
+        <ProtectedRoute><Profile /></ProtectedRoute>
+      </Route>
+      <Route path="/collections">
+        <ProtectedRoute><Collections /></ProtectedRoute>
+      </Route>
+      <Route path="/analytics">
+        <ProtectedRoute><Analytics /></ProtectedRoute>
+      </Route>
+      <Route path="/teams">
+        <ProtectedRoute><Teams /></ProtectedRoute>
+      </Route>
+      <Route path="/subscription">
+        <ProtectedRoute><Subscription /></ProtectedRoute>
+      </Route>
+      <Route path="/subscription/success">
+        <ProtectedRoute><SubscriptionSuccess /></ProtectedRoute>
+      </Route>
+      <Route path="/subscription/cancel">
+        <ProtectedRoute><SubscriptionCancel /></ProtectedRoute>
+      </Route>
+      <Route path="/subscription/billing">
+        <ProtectedRoute><SubscriptionBilling /></ProtectedRoute>
+      </Route>
       
       <Route component={NotFound} />
     </Switch>
