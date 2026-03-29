@@ -103,7 +103,7 @@ export async function getAdvancedAnalytics(timeRange: string = "30d"): Promise<A
       avgScore: avg(repositoryAnalyses.overallScore),
     })
     .from(repositoryAnalyses)
-    .where(gte(repositoryAnalyses.createdAt, startDate));
+    .where(gte(repositoryAnalyses.createdAt, sql`${startDate}`));
 
   // Get previous period data for trend calculation
   const [previousData] = await db
@@ -113,8 +113,8 @@ export async function getAdvancedAnalytics(timeRange: string = "30d"): Promise<A
     .from(repositoryAnalyses)
     .where(
       and(
-        gte(repositoryAnalyses.createdAt, previousPeriod.start),
-        gte(previousPeriod.end, repositoryAnalyses.createdAt)
+        gte(repositoryAnalyses.createdAt, sql`${previousPeriod.start}`),
+        gte(sql`${previousPeriod.end}`, repositoryAnalyses.createdAt)
       )
     );
 
@@ -163,7 +163,7 @@ export async function getAdvancedAnalytics(timeRange: string = "30d"): Promise<A
   return {
     overview: {
       totalAnalyses: overviewData.totalAnalyses || 0,
-      averageScore: Math.round((overviewData.avgScore || 0) * 10) / 10,
+      averageScore: Math.round((Number(overviewData.avgScore) || 0) * 10) / 10,
       trendsUp: Math.round(trendsUp * 10) / 10,
       activeRepositories: repoCount.count || 0,
       teamMembers: userCount.count || 0,
@@ -247,14 +247,14 @@ async function getRawTimeSeriesData(startDate: Date) {
       avgScore: avg(repositoryAnalyses.overallScore),
     })
     .from(repositoryAnalyses)
-    .where(gte(repositoryAnalyses.createdAt, startDate))
+    .where(gte(repositoryAnalyses.createdAt, sql`${startDate}`))
     .groupBy(sql`DATE(${repositoryAnalyses.createdAt})`)
     .orderBy(sql`DATE(${repositoryAnalyses.createdAt})`);
 
   return analyses.map(a => ({
     date: new Date(a.date).toLocaleDateString(),
     analyses: a.count,
-    avgScore: Math.round((a.avgScore || 0) * 10) / 10,
+    avgScore: Math.round((Number(a.avgScore) || 0) * 10) / 10,
     repositories: a.count, // Approximate
   }));
 }
@@ -299,7 +299,7 @@ async function getMetricTrends(startDate: Date, previousPeriod: { start: Date; e
       usefulness: avg(repositoryAnalyses.usefulness),
     })
     .from(repositoryAnalyses)
-    .where(gte(repositoryAnalyses.createdAt, startDate));
+    .where(gte(repositoryAnalyses.createdAt, sql`${startDate}`));
 
   const [previousMetrics] = await db
     .select({
@@ -312,8 +312,8 @@ async function getMetricTrends(startDate: Date, previousPeriod: { start: Date; e
     .from(repositoryAnalyses)
     .where(
       and(
-        gte(repositoryAnalyses.createdAt, previousPeriod.start),
-        gte(previousPeriod.end, repositoryAnalyses.createdAt)
+        gte(repositoryAnalyses.createdAt, sql`${previousPeriod.start}`),
+        gte(sql`${previousPeriod.end}`, repositoryAnalyses.createdAt)
       )
     );
 
@@ -325,29 +325,29 @@ async function getMetricTrends(startDate: Date, previousPeriod: { start: Date; e
 
   return {
     originality: {
-      current: Math.round(currentMetrics.originality || 0),
-      previous: Math.round(previousMetrics?.originality || 0),
-      trend: getTrend(currentMetrics.originality || 0, previousMetrics?.originality || 0),
+      current: Math.round(Number(currentMetrics.originality) || 0),
+      previous: Math.round(Number(previousMetrics?.originality) || 0),
+      trend: getTrend(Number(currentMetrics.originality) || 0, Number(previousMetrics?.originality) || 0),
     },
     completeness: {
-      current: Math.round(currentMetrics.completeness || 0),
-      previous: Math.round(previousMetrics?.completeness || 0),
-      trend: getTrend(currentMetrics.completeness || 0, previousMetrics?.completeness || 0),
+      current: Math.round(Number(currentMetrics.completeness) || 0),
+      previous: Math.round(Number(previousMetrics?.completeness) || 0),
+      trend: getTrend(Number(currentMetrics.completeness) || 0, Number(previousMetrics?.completeness) || 0),
     },
     marketability: {
-      current: Math.round(currentMetrics.marketability || 0),
-      previous: Math.round(previousMetrics?.marketability || 0),
-      trend: getTrend(currentMetrics.marketability || 0, previousMetrics?.marketability || 0),
+      current: Math.round(Number(currentMetrics.marketability) || 0),
+      previous: Math.round(Number(previousMetrics?.marketability) || 0),
+      trend: getTrend(Number(currentMetrics.marketability) || 0, Number(previousMetrics?.marketability) || 0),
     },
     monetization: {
-      current: Math.round(currentMetrics.monetization || 0),
-      previous: Math.round(previousMetrics?.monetization || 0),
-      trend: getTrend(currentMetrics.monetization || 0, previousMetrics?.monetization || 0),
+      current: Math.round(Number(currentMetrics.monetization) || 0),
+      previous: Math.round(Number(previousMetrics?.monetization) || 0),
+      trend: getTrend(Number(currentMetrics.monetization) || 0, Number(previousMetrics?.monetization) || 0),
     },
     usefulness: {
-      current: Math.round(currentMetrics.usefulness || 0),
-      previous: Math.round(previousMetrics?.usefulness || 0),
-      trend: getTrend(currentMetrics.usefulness || 0, previousMetrics?.usefulness || 0),
+      current: Math.round(Number(currentMetrics.usefulness) || 0),
+      previous: Math.round(Number(previousMetrics?.usefulness) || 0),
+      trend: getTrend(Number(currentMetrics.usefulness) || 0, Number(previousMetrics?.usefulness) || 0),
     },
   };
 }
@@ -365,7 +365,7 @@ async function getTopPerformers(startDate: Date) {
     })
     .from(repositoryAnalyses)
     .innerJoin(repositories, eq(repositoryAnalyses.repositoryId, repositories.id))
-    .where(gte(repositoryAnalyses.createdAt, startDate))
+    .where(gte(repositoryAnalyses.createdAt, sql`${startDate}`))
     .orderBy(desc(repositoryAnalyses.overallScore))
     .limit(5);
 
@@ -390,7 +390,7 @@ async function getRadarData(startDate: Date, previousPeriod: { start: Date; end:
       usefulness: avg(repositoryAnalyses.usefulness),
     })
     .from(repositoryAnalyses)
-    .where(gte(repositoryAnalyses.createdAt, startDate));
+    .where(gte(repositoryAnalyses.createdAt, sql`${startDate}`));
 
   const [previousMetrics] = await db
     .select({
@@ -403,40 +403,40 @@ async function getRadarData(startDate: Date, previousPeriod: { start: Date; end:
     .from(repositoryAnalyses)
     .where(
       and(
-        gte(repositoryAnalyses.createdAt, previousPeriod.start),
-        gte(previousPeriod.end, repositoryAnalyses.createdAt)
+        gte(repositoryAnalyses.createdAt, sql`${previousPeriod.start}`),
+        gte(sql`${previousPeriod.end}`, repositoryAnalyses.createdAt)
       )
     );
 
   return [
     {
       metric: "Originality",
-      A: Math.round(currentMetrics.originality || 0),
-      B: Math.round(previousMetrics?.originality || 0),
+      A: Math.round(Number(currentMetrics.originality) || 0),
+      B: Math.round(Number(previousMetrics?.originality) || 0),
       fullMark: 100,
     },
     {
       metric: "Completeness",
-      A: Math.round(currentMetrics.completeness || 0),
-      B: Math.round(previousMetrics?.completeness || 0),
+      A: Math.round(Number(currentMetrics.completeness) || 0),
+      B: Math.round(Number(previousMetrics?.completeness) || 0),
       fullMark: 100,
     },
     {
       metric: "Marketability",
-      A: Math.round(currentMetrics.marketability || 0),
-      B: Math.round(previousMetrics?.marketability || 0),
+      A: Math.round(Number(currentMetrics.marketability) || 0),
+      B: Math.round(Number(previousMetrics?.marketability) || 0),
       fullMark: 100,
     },
     {
       metric: "Monetization",
-      A: Math.round(currentMetrics.monetization || 0),
-      B: Math.round(previousMetrics?.monetization || 0),
+      A: Math.round(Number(currentMetrics.monetization) || 0),
+      B: Math.round(Number(previousMetrics?.monetization) || 0),
       fullMark: 100,
     },
     {
       metric: "Usefulness",
-      A: Math.round(currentMetrics.usefulness || 0),
-      B: Math.round(previousMetrics?.usefulness || 0),
+      A: Math.round(Number(currentMetrics.usefulness) || 0),
+      B: Math.round(Number(previousMetrics?.usefulness) || 0),
       fullMark: 100,
     },
   ];

@@ -497,14 +497,14 @@ export default function Search() {
                           {repository.name}
                         </h4>
                         <p className="text-sm text-gray-400" data-testid={`text-repo-owner-${repository.id}`}>
-                          {repository.fullName}
+                          {repository.full_name}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
                       <i className="fas fa-star text-yellow-500"></i>
                       <span className="text-sm" data-testid={`text-stars-${repository.id}`}>
-                        {repository.stars?.toLocaleString()}
+                        {repository.stargazers_count?.toLocaleString()}
                       </span>
                     </div>
                   </div>
@@ -520,7 +520,7 @@ export default function Search() {
                           {repository.language}
                         </span>
                       )}
-                      {repository.topics && repository.topics.slice(0, 2).map((topic: string) => (
+                      {(repository as any).topics && (repository as any).topics.slice(0, 2).map((topic: string) => (
                         <span key={topic} className="px-2 py-1 bg-gray-500/20 text-gray-400 text-xs rounded-full">
                           {topic}
                         </span>

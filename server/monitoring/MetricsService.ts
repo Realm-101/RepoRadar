@@ -273,8 +273,8 @@ class MetricsCollectionService {
    */
   getAllMetrics(startTime?: Date, endTime?: Date): {
     responseTimes: MetricsSummary;
-    errors: ReturnType<typeof this.getErrorRate>;
-    jobs: ReturnType<typeof this.getJobMetrics>;
+    errors: ReturnType<MetricsCollectionService['getErrorRate']>;
+    jobs: ReturnType<MetricsCollectionService['getJobMetrics']>;
     custom: Record<string, MetricsSummary>;
   } {
     const custom: Record<string, MetricsSummary> = {};

@@ -49,9 +49,8 @@ function getAllowedOrigins(): string[] {
       return uniqueOrigins;
     }
     
-    // Fallback to Render default if no origins set
-    logger.warn('CORS: No origins configured, using wildcard (not recommended for production)');
-    return ['*'];
+    logger.error('CORS: No origins configured in production. Set APP_URL or CORS_ALLOWED_ORIGINS environment variables.');
+    return [];
   }
   
   // Development: Allow common local development ports and Replit domains
